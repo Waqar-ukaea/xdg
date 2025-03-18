@@ -100,6 +100,7 @@ struct RTCDHit : RTCHit {
   const PrimitiveRef* primitive_ref {nullptr}; //!< Pointer to the primitive reference for this hit
   MeshID surface {ID_NONE}; //!< ID of the surface this hit belongs to
   Vec3da dNg; //!< Double precision version of the primitive normal
+  MeshID scene; // scene which ray is fired upon
 };
 
 /*! Stucture combining the ray and ray-hit structures to be passed to Embree queries */

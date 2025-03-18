@@ -4,12 +4,14 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 
 #include "xdg/constants.h"
 #include "xdg/embree_interface.h"
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/primitive_ref.h"
 #include "xdg/geometry_data.h"
+#include "xdg/ray.h"
 
 
 
@@ -42,7 +44,8 @@ public:
                                      const Direction& direction,
                                      const double dist_limit = INFTY,
                                      HitOrientation orientation = HitOrientation::EXITING,
-                                     std::vector<MeshID>* const exclude_primitives = nullptr);
+                                     std::vector<MeshID>* const exclude_primitives = nullptr,
+                                     std::function<void(const RTCDRayHit&)> hit_callback = nullptr);
 
   void closest(TreeID scene,
                const Position& origin,

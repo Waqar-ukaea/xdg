@@ -152,7 +152,8 @@ RayTracer::ray_fire(TreeID scene,
                     const Direction& direction,
                     const double dist_limit,
                     HitOrientation orientation,
-                    std::vector<MeshID>* const exclude_primitves)
+                    std::vector<MeshID>* const exclude_primitives,
+                    std::function<void(const RTCDRayHit&)> hit_callback)
 {     
   RTCDRayHit rayhit;
   // set ray data
@@ -163,10 +164,30 @@ RayTracer::ray_fire(TreeID scene,
   rayhit.ray.rf_type = RayFireType::VOLUME;
   rayhit.ray.orientation = orientation;
   rayhit.ray.mask = -1; // no mask
-  if (exclude_primitves != nullptr) rayhit.ray.exclude_primitives = exclude_primitves;
+  if (exclude_primitives != nullptr) rayhit.ray.exclude_primitives = exclude_primitives;
+  
+  // fire intial ray
+  rtcIntersect1(scene, (RTCRayHit*)&rayhit);
+  // TODO: I don't quite understand this...
+  rayhit.hit.Ng_x *= -1.0;
+  rayhit.hit.Ng_y *= -1.0;
+  rayhit.hit.Ng_z *= -1.0;
 
-  // fire the ray
-  {
+  // loop over callback function firing more rays whilst we keep hitting additional surfaces
+  while (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) 
+  {  
+    if (hit_callback) hit_callback(rayhit); // Call the callback function if provided
+    
+    // Update the exclude_primitives list for each callback 
+    if (exclude_primitives) exclude_primitives->push_back(rayhit.hit.primitive_ref->primitive_id);
+
+    // If no callback is provided, exit while loop and return the first hit
+    if (!hit_callback) return {rayhit.ray.dtfar, rayhit.hit.surface};
+    
+    // Move the ray origin to the next primitive and offset slightly to avoid hitting the same primitive
+    rayhit.ray.set_tnear(rayhit.ray.dtfar + 1e-3);
+
+    // fire the next ray if we made it through callback filter
     rtcIntersect1(scene, (RTCRayHit*)&rayhit);
     // TODO: I don't quite understand this...
     rayhit.hit.Ng_x *= -1.0;
@@ -174,11 +195,8 @@ RayTracer::ray_fire(TreeID scene,
     rayhit.hit.Ng_z *= -1.0;
   }
 
-  if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID)
-    return {INFTY, ID_NONE};
-  else
-    if (exclude_primitves) exclude_primitves->push_back(rayhit.hit.primitive_ref->primitive_id);
-    return {rayhit.ray.dtfar, rayhit.hit.surface};
+  // If no surface was hit, return default values
+  return {INFTY, ID_NONE};
 }
 
 void RayTracer::closest(TreeID scene,
