@@ -152,6 +152,8 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
     double3 dpaabbmax = max(max(A, B), C);
     float3 fpaabbmin = float3(dpaabbmin - float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
     float3 fpaabbmax = float3(dpaabbmax + float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
+    // printf("AABB %i: min(%f, %f, %f), max(%f, %f, %f)\n", primID, fpaabbmin.x, fpaabbmin.y, fpaabbmin.z,
+    //        fpaabbmax.x, fpaabbmax.y, fpaabbmax.z);
     record.aabbs[2 * primID] = fpaabbmin;
     record.aabbs[2 * primID + 1] = fpaabbmax;
 }
@@ -162,20 +164,21 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
 void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
 {
 
-    printf("DPTrianglePluckerIntersection called!\n");
     uint rayID = DispatchRaysIndex().x;
     uint nRays = DispatchRaysDimensions().x;
 
-    if (rayID >= nRays) return; // Just in case we are out of bounds
-
-    // if ((pixelID.x == dims.x / 2) && (pixelID.y == dims.y / 2)) debug = true; // Debugging ray at center of screen
-    // if ((rayID == nRays / 2)) debug = true; // Debugging ray at the center of array
+    if (rayID >= nRays) {
+        printf("Early return at line %d: rayID (%u) >= nRays (%u)\n", __LINE__, rayID, nRays);
+        return;
+    }
 
     uint flags = RayFlags();
 
-    // Just skip if we for some reason cull both...
     if (((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) &&
-        ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) return;
+        ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) {
+        printf("Early return at line %d: Both cull flags set\n", __LINE__);
+        return;
+    }
 
     // Set the ray orientation based on the flags
     bool useOrientation = false;
@@ -211,6 +214,7 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord0 > 0) {
+        printf("Early return at line %d: orientation * plucker_coord0 > 0\n", __LINE__);
         return;
     }
 
@@ -218,25 +222,33 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     double plucker_coord1 = plucker_edge_test(v1, v2, raya, rayb);
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord1 > 0) return;
-    // If the orientation is not specified, all plucker_coords must be the same sign or zero.
-    else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) return;
+    if (useOrientation && orientation * plucker_coord1 > 0) {
+        printf("Early return at line %d: orientation * plucker_coord1 > 0\n", __LINE__);
+        return;
+    }
+    else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) {
+        printf("Early return at line %d: plucker_coord0 and plucker_coord1 have opposite signs\n", __LINE__);
+        return;
+    }
 
     // Determine the value of the third Plucker coordinate from edge 2
     double plucker_coord2 = plucker_edge_test(v2, v0, raya, rayb);
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord2 > 0) return;
-    // If the orientation is not specified, all plucker_coords must be the same sign or zero.
+    if (useOrientation && orientation * plucker_coord2 > 0) {
+        printf("Early return at line %d: orientation * plucker_coord2 > 0\n", __LINE__);
+        return;
+    }
     else if ((0.0 < plucker_coord1 && 0.0 > plucker_coord2) || (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
-             (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2))
-    {
-        return; // EXIT_EARLY;
+             (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2)) {
+        printf("Early return at line %d: plucker_coords have opposite signs\n", __LINE__);
+        return;
     }
 
     // check for coplanar case to avoid dividing by zero
     if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
-        return; // EXIT_EARLY;
+        printf("Early return at line %d: coplanar case, all plucker_coords are zero\n", __LINE__);
+        return;
     }
 
     // Get the distance to the intersection point

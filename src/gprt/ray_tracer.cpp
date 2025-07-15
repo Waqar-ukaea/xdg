@@ -71,13 +71,13 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
     bool first_visit = !surface_to_geometry_map_.count(surf);
     auto triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
     gprt::Instance instance;
+    auto num_faces = mesh_manager->num_surface_faces(surf);
 
     std::cout << "  Surface " << surf << (first_visit ? " (first visit)" : " (already registered)") << std::endl;
 
-    if (first_visit)
-    {
+    // if (first_visit)
+    // {
       auto [vertices, indices] = mesh_manager->get_surface_mesh(surf);
-
       std::vector<double3> dbl3Vertices;
       dbl3Vertices.reserve(vertices.size());    
       for (const auto &vertex : vertices) {
@@ -91,8 +91,8 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
       }
 
       auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
-      auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*mesh_manager->num_surface_faces(surf), 0); // AABBs for each triangle
-      gprtAABBsSetPositions(triangleGeom, aabb_buffer, mesh_manager->num_surface_faces(surf), 2*sizeof(float3), 0);
+      auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
+      gprtAABBsSetPositions(triangleGeom, aabb_buffer, num_faces, 2*sizeof(float3), 0);
       auto connectivity_buffer = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
       
       DPTriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
@@ -101,7 +101,17 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
       geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
       geom_data->id = surf;
 
-      gprtComputeLaunch(aabbPopulationProgram_, {1, 1, 1}, {1, 1, 1}, *geom_data);
+      gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
+
+      // gprtBufferMap(aabb_buffer);
+      // float3* aabbs_host = gprtBufferGetHostPointer(aabb_buffer);
+      // for (size_t i = 0; i < 2*mesh_manager->num_surface_faces(surf); i += 2) {
+      //   float3 aabb_min = aabbs_host[i];
+      //   float3 aabb_max = aabbs_host[i + 1];
+      //   std::cout << "AABB " << i/2 << ": min(" << aabb_min.x << ", " << aabb_min.y << ", " << aabb_min.z
+      //             << "), max(" << aabb_max.x << ", " << aabb_max.y << ", " << aabb_max.z << ")" << std::endl;
+      // }
+      // gprtBufferUnmap(aabb_buffer);
 
       GPRTAccel blas = gprtAABBAccelCreate(context_, triangleGeom, GPRT_BUILD_MODE_FAST_TRACE_NO_UPDATE);
       gprtAccelBuild(context_, blas, GPRT_BUILD_MODE_FAST_TRACE_NO_UPDATE);
@@ -120,16 +130,16 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
       globalBlasInstances_.push_back(instance);
 
       std::cout << "    globalBlasInstances_ size now: " << globalBlasInstances_.size() << std::endl;
-    }
-    else 
-    {
-      triangleGeom = surface_to_geometry_map_.at(surf);
-      instance = surface_to_instance_map_.at(surf);
-    }
+    // }
+    // else 
+    // {
+    //   triangleGeom = surface_to_geometry_map_.at(surf);
+    //   instance = surface_to_instance_map_.at(surf);
+    // }
     surfaceBlasInstances.push_back(instance);
 
     // Always update per-volume info
-    DPTriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
+    // DPTriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
 
     if (volume_id == forward_parent) {
