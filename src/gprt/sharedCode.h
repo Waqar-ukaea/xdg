@@ -1,8 +1,9 @@
 #include "gprt.h"
 
 #define AA 3 // used for antialiasing
-
-
+#define EPSILON 2.2204460492503130808472633361816E-16
+// #define FLT_EPSILON	1.19209290e-7F
+// #define DBL_EPSILON	2.2204460492503131e-16
 
 /* Inputs for each ray */
 struct RayInput {
@@ -50,7 +51,7 @@ struct DPTriangleGeomData {
   float3 *aabbs; // AABB buffer 
   uint3 *index;  // index buffer
   double3 *normals; // normals buffer
-  double4 *dprays; // double precision rays
+  dblRayInput *ray; // double precision rays
   uint id;       // surface id
   int forward_vol;
   int reverse_vol;
@@ -61,6 +62,13 @@ struct RayGenData {
   SurfaceAccelerationStructure world;    // The top-level accel structure
   RayInput *ray;
   RayOutput *out;
+};
+
+struct dblRayGenData {
+  uint* frameBuffer;                     // Optional for debugging or visuals
+  SurfaceAccelerationStructure world;    // The top-level accel structure
+  dblRayInput *ray;
+  dblRayOutput *out;
 };
 
 struct RayFireData {

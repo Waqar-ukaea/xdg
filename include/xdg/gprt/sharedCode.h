@@ -51,7 +51,7 @@ struct DPTriangleGeomData {
   float3 *aabbs; // AABB buffer 
   uint3 *index;  // index buffer
   double3 *normals; // normals buffer
-  double4 *dprays; // double precision rays
+  dblRayInput *ray; // double precision rays
   uint id;       // surface id
   int forward_vol;
   int reverse_vol;
@@ -62,6 +62,13 @@ struct RayGenData {
   SurfaceAccelerationStructure world;    // The top-level accel structure
   RayInput *ray;
   RayOutput *out;
+};
+
+struct dblRayGenData {
+  uint* frameBuffer;                     // Optional for debugging or visuals
+  SurfaceAccelerationStructure world;    // The top-level accel structure
+  dblRayInput *ray;
+  dblRayOutput *out;
 };
 
 struct RayFireData {

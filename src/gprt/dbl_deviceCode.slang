@@ -70,7 +70,7 @@ void ray_fire_miss(inout RayFirePayload payload) {
 // This ray generation program will kick off the ray tracing process,
 // generating rays and tracing them into the world.
 [shader("raygeneration")]
-void ray_fire(uniform RayGenData record, uniform TrianglesGeomData mesh) {
+void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
     
@@ -81,28 +81,26 @@ void ray_fire(uniform RayGenData record, uniform TrianglesGeomData mesh) {
 
     // Trace the ray into the scene
     RayDesc rayDesc;
-    rayDesc.Origin = record.ray.origin;
-    rayDesc.Direction = normalize(record.ray.direction);
+    rayDesc.Origin = float3(record.ray[rayID].origin);
+    rayDesc.Direction = normalize(float3(record.ray[rayID].direction));
     rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
-    rayDesc.TMax = rayFirePC.dist_limit; // distance limit from push constants
-    
+    rayDesc.TMax = rayFirePC.dist_limit; // distance limit from push constants    
 
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
     payload.surf_id = ~0u;   
     payload.tlas = record.world;
 
-
-    uint rayFlagCull = (rayFirePC.orientation == 1) 
-                   ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES 
-                   : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    // uint rayFlagCull = (rayFirePC.orientation == 1) 
+    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES 
+    //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     
 
     // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
     // printf("Orientation: %u\n", rayFirePC.orientation);
     // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
     // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
-    TraceRay(record.world, rayFlagCull, 0xff, 0, 1, 0, rayDesc, payload);
+    TraceRay(record.world, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.out.distance = payload.distance;
@@ -161,11 +159,12 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
 /* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/
 [shader("intersection")]
-void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
+void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform dblRayGenData rayGenData)
 {
 
     uint rayID = DispatchRaysIndex().x;
     uint nRays = DispatchRaysDimensions().x;
+    printf("DPTrianglePluckerIntersection called with rayID: %u, nRays: %u\n", rayID, nRays);
 
     if (rayID >= nRays) {
         printf("Early return at line %d: rayID (%u) >= nRays (%u)\n", __LINE__, rayID, nRays);
@@ -199,12 +198,25 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     double3 v2 = record.vertex[indices.z];
 
     // Recover our double precision rays from the stored buffer
-    double4 raydata1 = record.dprays[rayID * 2 + 0];
-    double4 raydata2 = record.dprays[rayID * 2 + 1];
-    double3 origin = double3(raydata1.x, raydata1.y, raydata1.z);
-    double3 direction = double3(raydata2.x, raydata2.y, raydata2.z);
-    double tMin = raydata1.w;
-    double tMax = raydata2.w;
+    // double4 raydata1 = record.dprays[rayID * 2 + 0];
+    // double4 raydata2 = record.dprays[rayID * 2 + 1];
+    // double3 origin = double3(raydata1.x, raydata1.y, raydata1.z);
+    // double3 direction = double3(raydata2.x, raydata2.y, raydata2.z);
+    // double tMin = raydata1.w;
+    // double tMax = raydata2.w;
+
+    double3 origin = record.ray[rayID].origin;
+    double3 direction = record.ray[rayID].direction;
+    printf("origin: (%f, %f, %f), direction: (%f, %f, %f)\n",
+           origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);    
+
+    // double3 origin = {0.0, 0.0, 0.0}; // Placeholder for origin
+    // double3 direction = {0.0, 0.0, 0.0}; // Placeholder for direction
+    // tMin = rayGenData.ray.tMin;
+    // tMax = rayGenData.ray.tMax;
+
+    // printf("origin: (%f, %f, %f), direction: (%f, %f, %f)\n",
+    //        origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);
 
     const double3 raya = direction;
     const double3 rayb = dp_cross(v1 - v0, v2 - v0);
