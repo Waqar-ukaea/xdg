@@ -1,11 +1,24 @@
 #include "gprt.h"
 
 #define AA 3 // used for antialiasing
+#define EPSILON 2.2204460492503130808472633361816E-16
+// #define FLT_EPSILON	1.19209290e-7F
+// #define DBL_EPSILON	2.2204460492503131e-16
 
 /* Inputs for each ray */
 struct RayInput {
   float3 origin;
   float3 direction;
+  int32_t* exclude_primitives; // Optional for excluding primitives
+  uint32_t exclude_count;           // Number of excluded primitives
+};
+
+struct dblRayInput 
+{
+  double3 origin;
+  double3 direction;
+  double tMin; // Minimum distance for ray intersection
+  double tMax; // Maximum distance for ray intersection
   int32_t* exclude_primitives; // Optional for excluding primitives
   uint32_t exclude_count;           // Number of excluded primitives
 };
@@ -17,30 +30,47 @@ struct RayOutput
   float3 normal;
 };
 
-/* variables for the triangle mesh geometry */
+struct dblRayOutput 
+{
+  double distance;
+  uint surf_id;
+  double3 normal;
+};
+
+/* variables for the single precision triangle mesh geometry */
 struct TrianglesGeomData {
   float3 *vertex; // vertex buffer
   uint3 *index;   // index buffer
   float3 *normals;
   uint id;        // surface id
-  int2 vols;      // parent volumes ids
-  int sense;      // surface sense
+  int forward_vol; 
+  int reverse_vol;
 };
-// /* variables for the triangle mesh geometry */
-// struct DPTriangleGeomData {
-//   double3 *vertex; // vertex buffer
-//   uint3 *index;  // index buffer
-//   double4 *dprays; // double precision rays
-//   uint id;       // surface id
-//   uint2 vols;    // parent volumes
-//   uint fbSize; // framebuffer size
-// };
+
+/* variables for double precision triangle mesh geometry */
+struct DPTriangleGeomData {
+  double3 *vertex; // vertex buffer
+  float3 *aabbs; // AABB buffer 
+  uint3 *index;  // index buffer
+  double3 *normals; // normals buffer
+  dblRayInput *ray; // double precision rays
+  int2 vols;
+  int forward_vol;
+  int reverse_vol;
+};
 
 struct RayGenData {
   uint* frameBuffer;                     // Optional for debugging or visuals
   SurfaceAccelerationStructure world;    // The top-level accel structure
   RayInput *ray;
   RayOutput *out;
+};
+
+struct dblRayGenData {
+  uint* frameBuffer;                     // Optional for debugging or visuals
+  SurfaceAccelerationStructure world;    // The top-level accel structure
+  dblRayInput *ray;
+  dblRayOutput *out;
 };
 
 struct RayFireData {
@@ -50,6 +80,12 @@ struct RayFireData {
   RayOutput out;
 };
 
+struct dblRayFireData {
+  uint* frameBuffer;                     // Optional for debugging or visuals
+  SurfaceAccelerationStructure world;    // The top-level accel structure
+  dblRayInput ray;
+  dblRayOutput out;
+};
 
 /* variables for the miss program */
 struct MissProgData {
@@ -61,7 +97,9 @@ struct MissProgData {
   shader binding table. (must be 128 bytes or less) */
 struct PushConstants {
   float time;
+  float3 scene_center;
   struct Camera {
+    float radius;
     float3 pos;
     float3 dir_00;
     float3 dir_du;
@@ -71,5 +109,10 @@ struct PushConstants {
 
 struct RayFirePushConstants {
   float dist_limit;
+  int orientation;
+};
+
+struct dblRayFirePushConstants {
+  double dist_limit;
   int orientation;
 };

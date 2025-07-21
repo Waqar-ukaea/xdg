@@ -16,6 +16,7 @@
 #include "sharedCode.h"
 
 extern GPRTProgram flt_deviceCode;
+extern GPRTProgram dbl_deviceCode;
 
 namespace xdg {
 
@@ -27,6 +28,9 @@ namespace xdg {
       void set_geom_data(const std::shared_ptr<MeshManager> mesh_manager);
       void create_world_tlas();
   
+      TreeID register_triangle_geometry(const std::shared_ptr<MeshManager> mesh_manager, MeshID surface);
+      TreeID register_AABB_geometry(const std::shared_ptr<MeshManager> mesh_manager, MeshID surface);
+
       void init() override;
 
       // Setup the different shader programs for use with this ray tracer
@@ -54,13 +58,10 @@ namespace xdg {
       void closest(TreeID scene,
                   const Position& origin,
                   double& dist,
-                  MeshID& triangle) override {
-        // Find the closest triangle to the origin
-      }
-  
+                  MeshID& triangle) override {};
       void closest(TreeID scene,
                   const Position& origin,
-                  double& dist) override;
+                  double& dist) override {};
   
       bool occluded(TreeID scene,
                     const Position& origin,
@@ -70,33 +71,46 @@ namespace xdg {
         return false;
       }
   
+      // const std::shared_ptr<GeometryUserData>& geometry_data(MeshID surface) const override
+      // { return user_data_map_.at(surface_to_geometry_map_.at(surface)); };
+
       const std::shared_ptr<GeometryUserData>& geometry_data(MeshID surface) const override
-      { return user_data_map_.at(surface_to_geometry_map_.at(surface)); };
+      { };
   
-      void render_mesh();
+      void render_mesh(const std::shared_ptr<MeshManager> mesh_manager);
 
     private:
+      FloatingPointPrecision precision_;
+
       GPRTContext context_;
       GPRTProgram deviceCode_; // device code for float precision shaders
       GPRTModule module_; // device code module for single precision shaders
       // std::vector<GPRTGeom> geometries_; //<! All geometries created by this ray tracer
       GPRTAccel world_; 
-      GPRTRayGenOf<RayGenData> rayGenProgram_; //<! Ray generation program
-      GPRTRayGenOf<RayGenData> rayGenPointInVolProgram_;
+      GPRTRayGenOf<dblRayGenData> rayGenProgram_; //<! Ray generation program
+      GPRTRayGenOf<dblRayGenData> rayGenPointInVolProgram_;
       GPRTMissOf<void> missProgram_; //<! Miss program
+      GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
       GPRTBufferOf<uint32_t> frameBuffer_; //<! Framebuffer
       int2 fbSize; //<! Size of the framebuffer 
-      GPRTBufferOf<RayInput> rayInputBuffer_; //<! Ray buffer for ray generation
-      GPRTBufferOf<RayOutput> rayOutputBuffer_; //<! Ray output buffer for ray generation
+      GPRTBufferOf<dblRayInput> rayInputBuffer_; //<! Ray buffer for ray generation
+      GPRTBufferOf<dblRayOutput> rayOutputBuffer_; //<! Ray output buffer for ray generation
+      GPRTBufferOf<double4> dpRaysBuffer_; //<! Double precision ray buffer for ray generation
       GPRTBufferOf<int32_t> excludePrimitivesBuffer_; //<! Buffer for excluded primitives
       size_t numRays = 1; //<! Number of rays to be cast
+      uint32_t numRayTypes_ = 2; // <! Number of ray types. Allows multiple shaders to be set to the same geometery
       std::vector<gprt::Instance> globalBlasInstances_; //<! List of every BLAS instance stored in this ray tracer
+      GPRTGeomTypeOf<DPTriangleGeomData> trianglesGeomType_; //<! Geometry type for triangles
+
+
+
 
       // Mesh-to-Scene maps 
-      std::map<MeshID, GPRTGeom> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry
+      std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry
 
       // Internal GPRT Mappings
       std::unordered_map<GPRTGeom, std::shared_ptr<GeometryUserData>> user_data_map_;
+      std::unordered_map<MeshID, gprt::Instance> surface_to_instance_map_; //<! Map from mesh surface to GPRT instance
 
       std::unordered_map<TreeID, GPRTAccel> tree_to_vol_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
 
@@ -104,6 +118,7 @@ namespace xdg {
       std::unordered_map<GPRTAccel, std::vector<PrimitiveRef>> primitive_ref_storage_; // Comes from sharedCode.h?
       std::vector<GPRTBufferOf<float3>> vertex_buffers; // <! vertex buffers for each geometry
       std::vector<GPRTBufferOf<uint3>> connectivity_buffers; // <! connectivity buffers for each geometry
+      std::vector<GPRTGeomOf<TrianglesGeomData>> allTrianglesGeom; //<! Triangle geometries for each surface
 
     };
 

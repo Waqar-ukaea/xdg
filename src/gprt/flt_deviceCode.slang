@@ -27,7 +27,7 @@ struct RayFirePayload {
 // - The third is the intersection attributes. For triangles, these are two "barycentrics", used
 //   for interpolating per-vertex values.
 [shader("closesthit")]
-void TriangleMesh(uniform TrianglesGeomData record, inout Payload payload, in float2 bc) {
+void render_hits(uniform TrianglesGeomData record, inout Payload payload, in float2 bc) {
     // Threshold to determine edge thickness
     const float edgeThreshold = 0.02;
 
@@ -43,22 +43,25 @@ void TriangleMesh(uniform TrianglesGeomData record, inout Payload payload, in fl
         // payload.color = float3(r, g, b);
         payload.color = float3(0.0, 1.0, 0.0);
     }
+
+    // printf("Closest Hit called! Parent Vols: (%u, %u), surf_id: %u\n", record.forward_vol, record.reverse_vol, record.id);
 }
 
 // This ray generation program will kick off the ray tracing process,
 // generating rays and tracing them into the world.
 [shader("raygeneration")]
-void raygen(uniform RayGenData record) {
+void render_mesh(uniform RayGenData record) {
   Payload payload;
   uint2 pixelID = DispatchRaysIndex().xy;
   uint2 iResolution = DispatchRaysDimensions().xy;
-
+  
   // camera movement
   float an = pc.time;
   
-  float zoom = 100; // Increase the radius over time
-  float3 ro = float3(-zoom * sin(an), 0.0, zoom * cos(an));
-  float3 ta = float3(0.0, 0.0, 0.0);
+  float3 center = pc.scene_center;
+  float radius = pc.camera.radius; // or compute from bounding box size
+  float3 ro = center + float3(-radius * sin(an), 0.0, radius * cos(an));
+  float3 ta = center;
 
   // camera matrix
   float3 ww = normalize(ta - ro);
@@ -86,9 +89,9 @@ void raygen(uniform RayGenData record) {
     TraceRay(record.world,     // the tree
               RAY_FLAG_NONE,   // ray flags
               0xff,            // instance inclusion mask
-              0,               // ray type
-              1,               // number of ray types
-              0,               // miss index
+              1,               // ray type (set to render ray type)
+              2,               // number of ray types
+              1,               // miss index
               rayDesc,         // the ray to trace
               payload          // the payload IO
     );
@@ -104,7 +107,7 @@ void raygen(uniform RayGenData record) {
 }
 
 [shader("miss")]
-void miss(inout Payload payload, inout RayDesc rayDesc) {
+void render_miss(inout Payload payload, inout RayDesc rayDesc) {
     // Set a gradient background based on the ray direction
     float3 dir = normalize(rayDesc.Direction);
     payload.color = float3(1.0, 1.0, 1.0);
@@ -137,7 +140,6 @@ void ray_fire_hit(uniform TrianglesGeomData record, inout RayFirePayload payload
     //     "Index of next volume BLAS %i\n", record.id, record.vols[1], record.vols[0], record.ff_vol);
     //   }
     // }
-
  
 
     payload.distance = RayTCurrent();
@@ -145,8 +147,8 @@ void ray_fire_hit(uniform TrianglesGeomData record, inout RayFirePayload payload
     payload.normal = record.normals[PrimitiveIndex()];
 
     // Print the ray's origin and direction
-    printf("Closest Hit called!");
-    printf("Normal returned: (%f, %f, %f)", payload.normal.x, payload.normal.y, payload.normal.z);
+    // printf("Closest Hit called!");
+    // printf("Normal returned: (%f, %f, %f)", payload.normal.x, payload.normal.y, payload.normal.z);
     // printf("Closest Hit called! Distance: %f, surf_id: %u\n", payload.distance, record.id);
     // printf("Ray Origin: (%f, %f, %f)\n", payload.origin.x, payload.origin.y, payload.origin.z);
     // printf("Ray Direction: (%f, %f, %f)\n", payload.direction.x, payload.direction.y, payload.direction.z);
@@ -159,7 +161,7 @@ void ray_fire_miss(inout RayFirePayload payload) {
     payload.distance = -1.0f;
     payload.surf_id = ~0u;
     payload.normal = {0.0, 0.0, 0.0};
-    printf("Miss shader called!\n");
+    // printf("Miss shader called!\n");
 }
 
 // This ray generation program will kick off the ray tracing process,
@@ -193,10 +195,10 @@ void ray_fire(uniform RayGenData record, uniform TrianglesGeomData mesh) {
                    : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     
 
-    printf("Distance Limit: %f\n", rayFirePC.dist_limit);
-    printf("Orientation: %u\n", rayFirePC.orientation);
-    printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
-    printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
+    // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
+    // printf("Orientation: %u\n", rayFirePC.orientation);
+    // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
+    // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
     TraceRay(record.world, rayFlagCull, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
@@ -209,9 +211,9 @@ void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) 
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
-    printf("Ray Generation Shader called with :");
-    printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
-    printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    // printf("Ray Generation Shader called with :");
+    // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
     // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
 
     // Trace the ray into the scene
@@ -225,7 +227,7 @@ void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) 
     payload.surf_id = ~0u;   
     payload.tlas = record.world;    
 
-    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 1, 0, rayDesc, payload);
+    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 2, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.out.surf_id = payload.surf_id;

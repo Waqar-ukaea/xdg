@@ -3,175 +3,175 @@
 [[vk::push_constant]]
 PushConstants pc;
 
+[[vk::push_constant]]
+RayFirePushConstants rayFirePC;
+
 struct Payload {
     float3 color;
 };
 
-// This closest hit shader runs when a ray hits a triangle.
-// It processes per-geometry data and communicates with the ray generation shader.
-// - The first parameter is the shader record type, representing SBT parameters for this shader.
-// - The second is the ray payload type, used for passing data between shaders.
-// - The third is the intersection attributes. For triangles, these are two "barycentrics", used
-//   for interpolating per-vertex values.
-[shader("closesthit")]
-void TriangleMesh(uniform TrianglesGeomData record, inout Payload payload, in float2 bc) {
-    // Threshold to determine edge thickness
-    const float edgeThreshold = 0.02;
+struct RayFirePayload {
+    double distance;    // Distance to intersection
+    int surf_id;     // ID of the surface hit
+    int2 vol_ids;       // ID of the volume the ray is in
+    SurfaceAccelerationStructure tlas;
+    int next_vol;      // ID of the next volume
+    double3 normal;
+};
 
-    // Check if the ray is near an edge using barycentric coordinates
-    if (bc.x < edgeThreshold || bc.y < edgeThreshold || (1.0 - (bc.x + bc.y)) < edgeThreshold) {
-        // Near an edge: set color to black
-        payload.color = float3(0.0, 0.0, 0.0);
-    } else { // Generate a unique color for each parent volume
-        uint vol = record.vols.x; // Get first parent volume ID
-        float r = float((vol * 37) % 256) / 255.0;  
-        float g = float((vol * 73) % 256) / 255.0;  
-        float b = float((vol * 151) % 256) / 255.0; 
-        payload.color = float3(r, g, b);
-    }
+struct DPAttribute
+{
+  float2 bc;
+};
+
+
+[shader("closesthit")]
+void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payload, in float2 bc) {
+    // Distance from the ray origin to the hit point
+    uint hit_kind = HitKind();
+    uint rayID = DispatchRaysIndex().x;
+
+
+    // if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE){
+    //     payload.vol_ids.x = record.vols[0];
+    //     payload.vol_ids.y = record.vols[1];
+    //     payload.next_vol = record.reverse_vol;
+    // }
+    // else {
+    //     payload.vol_ids.x = record.vols[1];
+    //     payload.vol_ids.y = record.vols[0];
+    //     payload.next_vol = record.forward_vol;
+    // }
+    // payload.distance = record.out[rayID].distance;
+    // payload.surf_id = record.out[rayID].surf_id;
+    // payload.normal = record.normals[PrimitiveIndex()];
+}
+
+[shader("miss")]
+void ray_fire_miss(inout RayFirePayload payload) {
+    // Set the miss payload to default values
+    payload.distance = -1.0f;
+    payload.surf_id = ~0u;
+    payload.normal = {0.0, 0.0, 0.0};
+    printf("Miss shader called!\n");
 }
 
 // This ray generation program will kick off the ray tracing process,
 // generating rays and tracing them into the world.
 [shader("raygeneration")]
-void raygen(uniform RayGenData record) {
-    Payload payload;
-    uint2 pixelID = DispatchRaysIndex().xy;
-    uint2 iResolution = DispatchRaysDimensions().xy;
+void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
+    RayFirePayload payload;
+    uint rayID = DispatchRaysIndex().x;
 
-    // Use camera parameters from PushConstants
-    float3 ro = pc.camera.pos; // Camera position
-    float3 ww = normalize(pc.camera.dir_00); // Forward direction
-    float3 uu = normalize(pc.camera.dir_du); // Horizontal direction
-    float3 vv = normalize(pc.camera.dir_dv); // Vertical direction
+    // printf("Ray Generation Shader called with :");
+    // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
 
-    float3 tot = float3(0.0);
+    // Trace the ray into the scene
+    RayDesc rayDesc;
+    rayDesc.Origin = float3(record.ray[rayID].origin);
+    rayDesc.Direction = normalize(float3(record.ray[rayID].direction));
+    rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
+    rayDesc.TMax = rayFirePC.dist_limit; // distance limit from push constants
 
-    for (int m = 0; m < AA; m++)
-        for (int n = 0; n < AA; n++)
-        {
-            // Pixel coordinates
-            float2 o = float2(float(m), float(n)) / float(AA) - 0.5;
-            float2 p = (2.0 * (pixelID + o) - iResolution.xy) / iResolution.y;
+    // Pass the ray's origin and direction to the payload
+    payload.distance = -1.0f;
+    payload.surf_id = ~0u;
+    payload.tlas = record.world;
 
-            // Create view ray
-            float3 rd = normalize(p.x * uu + p.y * vv + ww);
+    // uint rayFlagCull = (rayFirePC.orientation == 1)
+    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
+    //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
-            // Trace the ray into the scene
-            RayDesc rayDesc;
-            rayDesc.Origin = ro;
-            rayDesc.Direction = rd;
-            rayDesc.TMin = 0.0;
-            rayDesc.TMax = 10000.0;
-            TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 1, 0, rayDesc, payload);
 
-            // Accumulate the color
-            tot += payload.color;
-        }
-    tot /= float(AA * AA);
+    // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
+    // printf("Orientation: %u\n", rayFirePC.orientation);
+    // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
+    // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
+    TraceRay(record.world, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xff, 0, 1, 0, rayDesc, payload);
 
-    const int fbOfs = pixelID.x + iResolution.x * pixelID.y;
-    record.frameBuffer[fbOfs] = gprt::make_bgra(tot);
+    // Store the distance to the hit point and the surface ID in buffers for CPU
+    record.out[rayID].distance = payload.distance;
+    record.out[rayID].surf_id = payload.surf_id;
 }
 
-[shader("miss")]
-void miss(inout Payload payload) {
-    // Set the background color to light gray
-    payload.color = float3(0.8, 0.8, 0.8);
+[shader("raygeneration")]
+void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) {
+    RayFirePayload payload;
+    uint rayID = DispatchRaysIndex().x;
+
+    // printf("Ray Generation Shader called with :");
+    // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
+
+    // Trace the ray into the scene
+    RayDesc rayDesc;
+    rayDesc.Origin = record.ray.origin;
+    rayDesc.Direction = normalize(record.ray.direction);
+    rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
+    rayDesc.TMax = 1e30f;
+
+    // Pass the ray's origin and direction to the payload
+    payload.surf_id = ~0u;
+    payload.tlas = record.world;
+
+    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 2, 0, rayDesc, payload);
+
+    // Store the distance to the hit point and the surface ID in buffers for CPU
+    record.out.surf_id = payload.surf_id;
+}
+
+// ------------------------------------------------- Compute Shaders -------------------------------------------------
+/* A shader to compute and store AABB min/maxes in single precision using double precision coords*/
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void
+populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGeomData record) {
+    int primID = DispatchThreadID.x;
+    int3 indices = record.index[primID];
+    double3 A = record.vertex[indices.x];
+    double3 B = record.vertex[indices.y];
+    double3 C = record.vertex[indices.z];
+    double3 dpaabbmin = min(min(A, B), C);
+    double3 dpaabbmax = max(max(A, B), C);
+    float3 fpaabbmin = float3(dpaabbmin - float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
+    float3 fpaabbmax = float3(dpaabbmax + float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
+    // printf("AABB %i: min(%f, %f, %f), max(%f, %f, %f)\n", primID, fpaabbmin.x, fpaabbmin.y, fpaabbmin.z,
+    //        fpaabbmax.x, fpaabbmax.y, fpaabbmax.z);
+    record.aabbs[2 * primID] = fpaabbmin;
+    record.aabbs[2 * primID + 1] = fpaabbmax;
 }
 
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
+
+
 /* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/
+struct TestAttr {
+    float2 bc;
+    float t;
+    double a;
+};
+
 [shader("intersection")]
-void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
+void DPTrianglePluckerIntersection()
 {
-    uint rayID = DispatchRaysIndex().x;
-    uint nRays = DispatchRaysDimensions().x;
+    float t = 1.0f;
+    double a = 2.021392392932939239239239;
+    double b = 1.021392392932939239239239;
+    double c = a*b;
+    TestAttr attr;
+    attr.a = c;
+    attr.bc = float2(0.3f, 0.3f);
+    attr.t = t;
 
-    if (rayID >= nRays) return; // Just in case we are out of bounds
-
-    // if ((pixelID.x == dims.x / 2) && (pixelID.y == dims.y / 2)) debug = true; // Debugging ray at center of screen
-    // if ((rayID == nRays / 2)) debug = true; // Debugging ray at the center of array
-
-    uint flags = RayFlags();
-
-    // Just skip if we for some reason cull both...
-    if (((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) &&
-        ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) return;
-
-    // Set the ray orientation based on the flags
-    bool useOrientation = false;
-    int orientation = 0;
-    if ((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) {
-        orientation = -1;
-        useOrientation = true;
+    if (ReportHit(t, HIT_KIND_TRIANGLE_FRONT_FACE, attr)) {
+        // Optional: log something
     }
-    else if ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0) {
-        orientation = 1;
-        useOrientation = true;
-    }
-
-    int primID = PrimitiveIndex();
-    int3 indices = record.index[primID];
-    double3 v0 = record.vertex[indices.x];
-    double3 v1 = record.vertex[indices.y];
-    double3 v2 = record.vertex[indices.z];
-
-    // Recover our double precision rays from the stored buffer
-    double4 raydata1 = record.dprays[rayID * 2 + 0];
-    double4 raydata2 = record.dprays[rayID * 2 + 1];
-    double3 origin = double3(raydata1.x, raydata1.y, raydata1.z);
-    double3 direction = double3(raydata2.x, raydata2.y, raydata2.z);
-    double tMin = raydata1.w;
-    double tMax = raydata2.w;
-
-    const double3 raya = direction;
-    const double3 rayb = dp_cross(v1 - v0, v2 - v0);
-
-    // Determine the value of first Plucker coordinate from edge 0
-    double plucker_coord0 = plucker_edge_test(v0, v1, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord0 > 0) {
-        return;
-    }
-
-    // Determine the value of the second Plucker coordinate from edge 1
-    double plucker_coord1 = plucker_edge_test(v1, v2, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord1 > 0) return;
-    // If the orientation is not specified, all plucker_coords must be the same sign or zero.
-    else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) return;
-
-    // Determine the value of the third Plucker coordinate from edge 2
-    double plucker_coord2 = plucker_edge_test(v2, v0, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord2 > 0) return;
-    // If the orientation is not specified, all plucker_coords must be the same sign or zero.
-    else if ((0.0 < plucker_coord1 && 0.0 > plucker_coord2) || (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
-             (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2))
-    {
-        return; // EXIT_EARLY;
-    }
-
-    // check for coplanar case to avoid dividing by zero
-    if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
-        return; // EXIT_EARLY;
-    }
-
-    // Get the distance to the intersection point
-    const double inverse_sum = 1.0 / (plucker_coord0 + plucker_coord1 + plucker_coord2);
-    const double3 intersection = double3(plucker_coord0 * inverse_sum * v2 +
-                                         plucker_coord1 * inverse_sum * v0 +
-                                         plucker_coord2 * inverse_sum * v1);
-
-    // To minimise numerical error, get index of largest magnitude direction component
-    int idx = 0;
-    
-
 }
+
+// ------------------------------------------------- Helper functions -------------------------------------------------
 
 // Double precision cross product
 double3 dp_cross(in double3 a, in double3 b) { return double3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
@@ -214,4 +214,16 @@ inline bool first(in double3 a, in double3 b)
     if (a.y == b.y && a.z < b.z) return true;
 
     return false;
+}
+
+double3 dcross (in double3 a, in double3 b) { return double3(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x); }
+
+float next_after(float a) {
+  uint a_ = asuint(a);
+  if (a < 0) {
+    a_--;
+  } else {
+    a_++;
+  }
+  return asfloat(a_);
 }
