@@ -54,7 +54,8 @@ struct DPTriangleGeomData {
   uint3 *index;  // index buffer
   double3 *normals; // normals buffer
   dblRayInput *ray; // double precision rays
-  dblRayOutput *out;
+  double hitDistance; // distance to the hit point
+  uint surf_id;
   int2 vols;
   int forward_vol;
   int reverse_vol;

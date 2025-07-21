@@ -99,7 +99,7 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
       geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
       geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
       geom_data->ray = gprtBufferGetDevicePointer(rayInputBuffer_);
-      geom_data->out = gprtBufferGetDevicePointer(rayOutputBuffer_);
+      geom_data->surf_id = surf;
 
       gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
 
