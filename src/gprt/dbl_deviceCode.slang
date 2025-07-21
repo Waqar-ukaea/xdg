@@ -11,51 +11,40 @@ struct Payload {
 };
 
 struct RayFirePayload {
-    float distance;    // Distance to intersection
+    double distance;    // Distance to intersection
     int surf_id;     // ID of the surface hit
-    int vol_id;       // ID of the volume the ray is in 
+    int2 vol_ids;       // ID of the volume the ray is in
     SurfaceAccelerationStructure tlas;
     int next_vol;      // ID of the next volume
-    float3 normal;
+    double3 normal;
 };
 
+struct DPAttribute
+{
+  float2 bc;
+};
+
+
 [shader("closesthit")]
-void ray_fire_hit(uniform TrianglesGeomData record, inout RayFirePayload payload, in float2 bc) {
+void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payload, in float2 bc) {
     // Distance from the ray origin to the hit point
     uint hit_kind = HitKind();
+    uint rayID = DispatchRaysIndex().x;
 
-    // if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE) {
-    //   payload.vol_ids.x = record.vols[0]; // moving out of this volume
-    //   payload.vol_ids.y = record.vols[1]; // moving into this volume
-    //   payload.next_vol = record.bf_vol; // moving into the backface volume
+
+    // if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE){
+    //     payload.vol_ids.x = record.vols[0];
+    //     payload.vol_ids.y = record.vols[1];
+    //     payload.next_vol = record.reverse_vol;
     // }
     // else {
-    //   payload.vol_ids.x = record.vols[1]; // moving out of this volume
-    //   payload.vol_ids.y = record.vols[0]; // moving into this volume
-    //   payload.next_vol = record.ff_vol; // moving into the frontface volume
-    //   uint2 pixelID = DispatchRaysIndex().xy;
-    //   uint2 centerID = DispatchRaysDimensions().xy / 2;
-    //   if (all(pixelID == centerID)) {
-    //     // printf("Index of next volume BLAS %i", payload.next_vol);
-    //     // printf("Going from volume %i into volume %i, ", payload.vol_ids.x, payload.vol_ids.y);
-    //     printf("\nSurface ID: %i \n"
-    //     "Geom Data Vols: {%i, %i}\n"
-    //     "Index of next volume BLAS %i\n", record.id, record.vols[1], record.vols[0], record.ff_vol);
-    //   }
+    //     payload.vol_ids.x = record.vols[1];
+    //     payload.vol_ids.y = record.vols[0];
+    //     payload.next_vol = record.forward_vol;
     // }
- 
-
-    payload.distance = RayTCurrent();
-    payload.surf_id = record.id;
-    payload.normal = record.normals[PrimitiveIndex()];
-
-    // Print the ray's origin and direction
-    // printf("Closest Hit called!");
-    // printf("Normal returned: (%f, %f, %f)", payload.normal.x, payload.normal.y, payload.normal.z);
-    // printf("Closest Hit called! Distance: %f, surf_id: %u\n", payload.distance, record.id);
-    // printf("Ray Origin: (%f, %f, %f)\n", payload.origin.x, payload.origin.y, payload.origin.z);
-    // printf("Ray Direction: (%f, %f, %f)\n", payload.direction.x, payload.direction.y, payload.direction.z);
-    // printf("Barycentrics: (%f, %f)\n", bc.x, bc.y);
+    // payload.distance = record.out[rayID].distance;
+    // payload.surf_id = record.out[rayID].surf_id;
+    // payload.normal = record.normals[PrimitiveIndex()];
 }
 
 [shader("miss")]
@@ -73,7 +62,7 @@ void ray_fire_miss(inout RayFirePayload payload) {
 void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
-    
+
     // printf("Ray Generation Shader called with :");
     // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
     // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
@@ -84,17 +73,17 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     rayDesc.Origin = float3(record.ray[rayID].origin);
     rayDesc.Direction = normalize(float3(record.ray[rayID].direction));
     rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
-    rayDesc.TMax = rayFirePC.dist_limit; // distance limit from push constants    
+    rayDesc.TMax = rayFirePC.dist_limit; // distance limit from push constants
 
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
-    payload.surf_id = ~0u;   
+    payload.surf_id = ~0u;
     payload.tlas = record.world;
 
-    // uint rayFlagCull = (rayFirePC.orientation == 1) 
-    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES 
+    // uint rayFlagCull = (rayFirePC.orientation == 1)
+    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
     //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
-    
+
 
     // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
     // printf("Orientation: %u\n", rayFirePC.orientation);
@@ -103,8 +92,8 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     TraceRay(record.world, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
-    record.out.distance = payload.distance;
-    record.out.surf_id = payload.surf_id;
+    record.out[rayID].distance = payload.distance;
+    record.out[rayID].surf_id = payload.surf_id;
 }
 
 [shader("raygeneration")]
@@ -123,16 +112,15 @@ void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) 
     rayDesc.Direction = normalize(record.ray.direction);
     rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
     rayDesc.TMax = 1e30f;
-    
+
     // Pass the ray's origin and direction to the payload
-    payload.surf_id = ~0u;   
-    payload.tlas = record.world;    
+    payload.surf_id = ~0u;
+    payload.tlas = record.world;
 
     TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 2, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.out.surf_id = payload.surf_id;
-    record.out.normal = payload.normal;
 }
 
 // ------------------------------------------------- Compute Shaders -------------------------------------------------
@@ -157,123 +145,33 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
 }
 
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
+
+
 /* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/
+struct TestAttr {
+    float2 bc;
+    float t;
+    double a;
+};
+
 [shader("intersection")]
-void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform dblRayGenData rayGenData)
+void DPTrianglePluckerIntersection()
 {
+    float t = 1.0f;
+    double a = 2.021392392932939239239239;
+    double b = 1.021392392932939239239239;
+    double c = a*b;
+    TestAttr attr;
+    attr.a = c;
+    attr.bc = float2(0.3f, 0.3f);
+    attr.t = t;
 
-    uint rayID = DispatchRaysIndex().x;
-    uint nRays = DispatchRaysDimensions().x;
-    printf("DPTrianglePluckerIntersection called with rayID: %u, nRays: %u\n", rayID, nRays);
-
-    if (rayID >= nRays) {
-        printf("Early return at line %d: rayID (%u) >= nRays (%u)\n", __LINE__, rayID, nRays);
-        return;
+    if (ReportHit(t, HIT_KIND_TRIANGLE_FRONT_FACE, attr)) {
+        // Optional: log something
     }
-
-    uint flags = RayFlags();
-
-    if (((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) &&
-        ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) {
-        printf("Early return at line %d: Both cull flags set\n", __LINE__);
-        return;
-    }
-
-    // Set the ray orientation based on the flags
-    bool useOrientation = false;
-    int orientation = 0;
-    if ((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) {
-        orientation = -1;
-        useOrientation = true;
-    }
-    else if ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0) {
-        orientation = 1;
-        useOrientation = true;
-    }
-
-    int primID = PrimitiveIndex();
-    int3 indices = record.index[primID];
-    double3 v0 = record.vertex[indices.x];
-    double3 v1 = record.vertex[indices.y];
-    double3 v2 = record.vertex[indices.z];
-
-    // Recover our double precision rays from the stored buffer
-    // double4 raydata1 = record.dprays[rayID * 2 + 0];
-    // double4 raydata2 = record.dprays[rayID * 2 + 1];
-    // double3 origin = double3(raydata1.x, raydata1.y, raydata1.z);
-    // double3 direction = double3(raydata2.x, raydata2.y, raydata2.z);
-    // double tMin = raydata1.w;
-    // double tMax = raydata2.w;
-
-    double3 origin = record.ray[rayID].origin;
-    double3 direction = record.ray[rayID].direction;
-    printf("origin: (%f, %f, %f), direction: (%f, %f, %f)\n",
-           origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);    
-
-    // double3 origin = {0.0, 0.0, 0.0}; // Placeholder for origin
-    // double3 direction = {0.0, 0.0, 0.0}; // Placeholder for direction
-    // tMin = rayGenData.ray.tMin;
-    // tMax = rayGenData.ray.tMax;
-
-    // printf("origin: (%f, %f, %f), direction: (%f, %f, %f)\n",
-    //        origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);
-
-    const double3 raya = direction;
-    const double3 rayb = dp_cross(v1 - v0, v2 - v0);
-
-    // Determine the value of first Plucker coordinate from edge 0
-    double plucker_coord0 = plucker_edge_test(v0, v1, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord0 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord0 > 0\n", __LINE__);
-        return;
-    }
-
-    // Determine the value of the second Plucker coordinate from edge 1
-    double plucker_coord1 = plucker_edge_test(v1, v2, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord1 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord1 > 0\n", __LINE__);
-        return;
-    }
-    else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) {
-        printf("Early return at line %d: plucker_coord0 and plucker_coord1 have opposite signs\n", __LINE__);
-        return;
-    }
-
-    // Determine the value of the third Plucker coordinate from edge 2
-    double plucker_coord2 = plucker_edge_test(v2, v0, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
-    if (useOrientation && orientation * plucker_coord2 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord2 > 0\n", __LINE__);
-        return;
-    }
-    else if ((0.0 < plucker_coord1 && 0.0 > plucker_coord2) || (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
-             (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2)) {
-        printf("Early return at line %d: plucker_coords have opposite signs\n", __LINE__);
-        return;
-    }
-
-    // check for coplanar case to avoid dividing by zero
-    if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
-        printf("Early return at line %d: coplanar case, all plucker_coords are zero\n", __LINE__);
-        return;
-    }
-
-    // Get the distance to the intersection point
-    const double inverse_sum = 1.0 / (plucker_coord0 + plucker_coord1 + plucker_coord2);
-    const double3 intersection = double3(plucker_coord0 * inverse_sum * v2 +
-                                         plucker_coord1 * inverse_sum * v0 +
-                                         plucker_coord2 * inverse_sum * v1);
-
-    // To minimise numerical error, get index of largest magnitude direction component
-    int idx = 0;
-    printf("We are here in the double precision intersection shader!\n");
-
 }
+
+// ------------------------------------------------- Helper functions -------------------------------------------------
 
 // Double precision cross product
 double3 dp_cross(in double3 a, in double3 b) { return double3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
@@ -316,4 +214,16 @@ inline bool first(in double3 a, in double3 b)
     if (a.y == b.y && a.z < b.z) return true;
 
     return false;
+}
+
+double3 dcross (in double3 a, in double3 b) { return double3(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x); }
+
+float next_after(float a) {
+  uint a_ = asuint(a);
+  if (a < 0) {
+    a_--;
+  } else {
+    a_++;
+  }
+  return asfloat(a_);
 }

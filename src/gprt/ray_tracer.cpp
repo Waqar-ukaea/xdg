@@ -19,7 +19,6 @@ GPRTRayTracer::GPRTRayTracer()
   rayInputBuffer_ = gprtDeviceBufferCreate<dblRayInput>(context_, numRays);
   rayOutputBuffer_ = gprtDeviceBufferCreate<dblRayOutput>(context_, numRays); 
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
-  dpRaysBuffer_ = gprtDeviceBufferCreate<double4>(context_, numRays * 2); // Double precision rays, 2 per ray
 
   setup_shaders();
 
@@ -99,8 +98,8 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
       geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
       geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
       geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
-      geom_data->id = surf;
       geom_data->ray = gprtBufferGetDevicePointer(rayInputBuffer_);
+      geom_data->out = gprtBufferGetDevicePointer(rayOutputBuffer_);
 
       gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
 

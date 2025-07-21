@@ -17,6 +17,8 @@ struct dblRayInput
 {
   double3 origin;
   double3 direction;
+  double tMin; // Minimum distance for ray intersection
+  double tMax; // Maximum distance for ray intersection
   int32_t* exclude_primitives; // Optional for excluding primitives
   uint32_t exclude_count;           // Number of excluded primitives
 };
@@ -52,7 +54,7 @@ struct DPTriangleGeomData {
   uint3 *index;  // index buffer
   double3 *normals; // normals buffer
   dblRayInput *ray; // double precision rays
-  uint id;       // surface id
+  int2 vols;
   int forward_vol;
   int reverse_vol;
 };
