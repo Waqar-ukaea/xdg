@@ -73,6 +73,7 @@ struct dblRayGenData {
   SurfaceAccelerationStructure world;    // The top-level accel structure
   dblRayInput *ray;
   dblRayOutput *out;
+  int orientation; // Orientation of the ray (0 for exiting, 1 for entering)
 };
 
 struct RayFireData {

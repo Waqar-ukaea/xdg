@@ -17,6 +17,7 @@ struct RayFirePayload {
     SurfaceAccelerationStructure tlas;
     int next_vol;      // ID of the next volume
     double3 normal;
+    uint hit_kind; // Kind of hit (front or back face)
 };
 
 struct DPAttribute
@@ -44,9 +45,8 @@ void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payloa
     }
     payload.distance = attr.hitDistance;
     payload.surf_id = record.surf_id;
-    printf("record.hitDistance: %f \n", payload.distance);
-
-    // payload.normal = record.normals[PrimitiveIndex()];
+    payload.normal = record.normals[PrimitiveIndex()];
+    payload.hit_kind = hit_kind;
 }
 
 [shader("miss")]
@@ -86,16 +86,16 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     payload.tlas = record.world;
 
 
-    // uint rayFlagCull = (rayFirePC.orientation == 1)
-    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
-    //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    uint rayFlagCull = (rayFirePC.orientation == 1)
+                   ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
+                   : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
 
     // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
     // printf("Orientation: %u\n", rayFirePC.orientation);
     // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
     // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
-    TraceRay(record.world, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, 0xff, 0, 1, 0, rayDesc, payload);
+    TraceRay(record.world, rayFlagCull, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.out[rayID].distance = payload.distance;
@@ -103,7 +103,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
 }
 
 [shader("raygeneration")]
-void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) {
+void point_in_volume(uniform dblRayGenData record, uniform TrianglesGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
@@ -114,8 +114,8 @@ void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) 
 
     // Trace the ray into the scene
     RayDesc rayDesc;
-    rayDesc.Origin = record.ray.origin;
-    rayDesc.Direction = normalize(record.ray.direction);
+    rayDesc.Origin = float3(record.ray[rayID].origin);
+    rayDesc.Direction = float3(normalize(record.ray[rayID].direction));
     rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
     rayDesc.TMax = 1e30f;
 
@@ -125,7 +125,9 @@ void point_in_volume(uniform RayGenData record, uniform TrianglesGeomData mesh) 
 
     TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 2, 0, rayDesc, payload);
 
-    // Store the distance to the hit point and the surface ID in buffers for CPU
+    // Store the result of the point in volume check and the surface ID of the primitive hit
+    // 0 = outside, 1 = inside
+    record.out[rayID].normal = payload.normal; 
     record.out.surf_id = payload.surf_id;
 }
 
@@ -162,7 +164,6 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
     uint nRays = DispatchRaysDimensions().x;
 
     if (rayID >= nRays) {
-        printf("Early return at line %d: rayID (%u) >= nRays (%u)\n", __LINE__, rayID, nRays);
         return;
     }
 
@@ -170,7 +171,6 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     if (((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) &&
         ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) {
-        printf("Early return at line %d: Both cull flags set\n", __LINE__);
         return;
     }
 
@@ -218,7 +218,6 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord0 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord0 > 0\n", __LINE__);
         return;
     }
 
@@ -227,11 +226,9 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord1 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord1 > 0\n", __LINE__);
         return;
     }
     else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) {
-        printf("Early return at line %d: plucker_coord0 and plucker_coord1 have opposite signs\n", __LINE__);
         return;
     }
 
@@ -240,18 +237,15 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord2 > 0) {
-        printf("Early return at line %d: orientation * plucker_coord2 > 0\n", __LINE__);
         return;
     }
     else if ((0.0 < plucker_coord1 && 0.0 > plucker_coord2) || (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
              (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2)) {
-        printf("Early return at line %d: plucker_coords have opposite signs\n", __LINE__);
         return;
     }
 
     // check for coplanar case to avoid dividing by zero
     if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
-        printf("Early return at line %d: coplanar case, all plucker_coords are zero\n", __LINE__);
         return;
     }
 

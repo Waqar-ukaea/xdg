@@ -76,6 +76,8 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
 
     // if (first_visit)
     // {
+      
+      // Get storage for vertices
       auto [vertices, indices] = mesh_manager->get_surface_mesh(surf);
       std::vector<double3> dbl3Vertices;
       dbl3Vertices.reserve(vertices.size());    
@@ -83,23 +85,35 @@ TreeID GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager> mesh_ma
         dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
       }
 
+      // Get storage for indices
       std::vector<uint3> ui3Indices;
       ui3Indices.reserve(indices.size() / 3);
       for (size_t i = 0; i < indices.size(); i += 3) {
         ui3Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
       }
 
+      // Get storage for normals
+      std::vector<double3> normals;
+      normals.reserve(num_faces);
+      for (const auto &face : mesh_manager->get_surface_faces(surf)) {
+        auto norm = mesh_manager->face_normal(face);
+        normals.push_back({norm.x, norm.y, norm.z});
+      }
+
       auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
       auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
       gprtAABBsSetPositions(triangleGeom, aabb_buffer, num_faces, 2*sizeof(float3), 0);
       auto connectivity_buffer = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
-      
+      auto normal_buffer = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data()); 
+
+
       DPTriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
       geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
       geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
       geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
       geom_data->ray = gprtBufferGetDevicePointer(rayInputBuffer_);
       geom_data->surf_id = surf;
+      geom_data->normals = gprtBufferGetDevicePointer(normal_buffer);
 
       gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
 
@@ -318,6 +332,10 @@ bool GPRTRayTracer::point_in_volume(TreeID tree,
   // use the hit triangle normal to determine if the intersection is exiting or entering
   // TODO - Do this on GPU and return an int 1 or 0 to represent the bool?
 
+  printf("Point in Volume Check: surface=%d, normal=(%f, %f, %f)\n", surface, normal.x, normal.y, normal.z);
+  printf("Point in Volume Check: directionUsed=(%f, %f, %f)\n", directionUsed.x, directionUsed.y, directionUsed.z);
+  printf("Point in Volume Check: dot=%f\n", directionUsed.dot(normal));
+
   return directionUsed.dot(normal) > 0.0;
 }
 
@@ -335,6 +353,7 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(TreeID scene,
   GPRTAccel volume = tree_to_vol_accel_map.at(scene);
   dblRayGenData* rayGenData = gprtRayGenGetParameters(rayGenProgram_);
   rayGenData->world = gprtAccelGetDeviceAddress(volume);
+  rayGenData->orientation = static_cast<int>(orientation); // Set orientation for the ray
   
   gprtBufferMap(rayInputBuffer_); // Update the ray input buffer
 
