@@ -65,10 +65,10 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
-    // printf("Ray Generation Shader called with :");
-    // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
-    // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
-    // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
+    printf("Ray Generation Shader called with :");
+    printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
 
     // Trace the ray into the scene
     RayDesc rayDesc;
@@ -95,7 +95,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     // printf("Orientation: %u\n", rayFirePC.orientation);
     // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
     // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
-    TraceRay(record.world, rayFlagCull, 0xff, 0, 1, 0, rayDesc, payload);
+    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.out[rayID].distance = payload.distance;
@@ -159,11 +159,11 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
 [shader("intersection")]
 void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform dblRayGenData rayGenData)
 {
-
     uint rayID = DispatchRaysIndex().x;
     uint nRays = DispatchRaysDimensions().x;
 
     if (rayID >= nRays) {
+        printf("Rejected: rayID %u >= nRays %u\n", rayID, nRays);
         return;
     }
 
@@ -171,10 +171,10 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     if (((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) &&
         ((flags & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) != 0)) {
+        printf("Rejected: both front and back facing triangles are culled\n");
         return;
     }
 
-    // Set the ray orientation based on the flags
     bool useOrientation = false;
     int orientation = 0;
     if ((flags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0) {
@@ -192,109 +192,93 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
     double3 v1 = record.vertex[indices.y];
     double3 v2 = record.vertex[indices.z];
 
-    // Recover our double precision rays from the stored buffer
-    // double4 raydata1 = record.dprays[rayID * 2 + 0];
-    // double4 raydata2 = record.dprays[rayID * 2 + 1];
-    // double3 origin = double3(raydata1.x, raydata1.y, raydata1.z);
-    // double3 direction = double3(raydata2.x, raydata2.y, raydata2.z);
-    // double tMin = raydata1.w;
-    // double tMax = raydata2.w;
-
     double3 origin = record.ray[rayID].origin;
     double3 direction = record.ray[rayID].direction;
 
-    // double tMin = rayGenData.ray[rayID].tMin;
-    // double tMax = rayGenData.ray[rayID].tMax;
-
-    // hard coded for now. Need to be passed from host->raygen->intersection shader
     float tMin = 0.0;
     float tMax = 10000;
 
     const double3 raya = direction;
     const double3 rayb = dp_cross(v1 - v0, v2 - v0);
 
-    // Determine the value of first Plucker coordinate from edge 0
     double plucker_coord0 = plucker_edge_test(v0, v1, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord0 > 0) {
+        printf("Rejected: orientation check failed at edge 0 (plucker_coord0 = %f)\n", plucker_coord0);
         return;
     }
 
-    // Determine the value of the second Plucker coordinate from edge 1
     double plucker_coord1 = plucker_edge_test(v1, v2, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
     if (useOrientation && orientation * plucker_coord1 > 0) {
+        printf("Rejected: orientation check failed at edge 1 (plucker_coord1 = %f)\n", plucker_coord1);
         return;
     }
     else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) || (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) {
+        printf("Rejected: winding check failed between edge 0 and edge 1\n");
         return;
     }
 
-    // Determine the value of the third Plucker coordinate from edge 2
     double plucker_coord2 = plucker_edge_test(v2, v0, raya, rayb);
-
-    // If orientation is set, confirm that sign of plucker_coordinate indicate correct orientation of intersection
+    printf("Plücker coords: %f, %f, %f\n", plucker_coord0, plucker_coord1, plucker_coord2);
     if (useOrientation && orientation * plucker_coord2 > 0) {
+        printf("Rejected: orientation check failed at edge 2 (plucker_coord2 = %f)\n", plucker_coord2);
         return;
     }
     else if ((0.0 < plucker_coord1 && 0.0 > plucker_coord2) || (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
              (0.0 < plucker_coord0 && 0.0 > plucker_coord2) || (0.0 > plucker_coord0 && 0.0 < plucker_coord2)) {
+        printf("Rejected: winding check failed across multiple edges\n");
         return;
     }
 
-    // check for coplanar case to avoid dividing by zero
     if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
+        printf("Rejected: coplanar triangle (all Plücker coords are zero)\n");
         return;
     }
 
-    // Get the distance to the intersection point
     const double inverse_sum = 1.0 / (plucker_coord0 + plucker_coord1 + plucker_coord2);
     const double3 intersection = double3(plucker_coord0 * inverse_sum * v2 +
                                          plucker_coord1 * inverse_sum * v0 +
                                          plucker_coord2 * inverse_sum * v1);
 
-    // To minimise numerical error, get index of largest magnitude direction component
     int idx = 0;
     double max_abs_dir = 0;
-    for(uint i = 0; i < 3; ++i)
-    {
-        if( abs( direction[i] ) > max_abs_dir )
-        {
+    for(uint i = 0; i < 3; ++i) {
+        if(abs(direction[i]) > max_abs_dir) {
             idx         = i;
-            max_abs_dir = abs( direction[i] );
+            max_abs_dir = abs(direction[i]);
         }
     }
-    const double dist = ( intersection[idx] - origin[idx] ) / direction[idx];
+    const double dist = (intersection[idx] - origin[idx]) / direction[idx];
 
     double t = dist;
     double u = plucker_coord2 * inverse_sum;
     double v = plucker_coord0 * inverse_sum;
 
-    if( u < 0.0 || v < 0.0 || (u+v) > 1.0 ) t = -1.0;
-    if (t > tMax) return;
-    if (t < tMin) return;
-
-    // printf("Distance: %f", t);
-
-    // update current double precision thit
+    if(u < 0.0 || v < 0.0 || (u + v) > 1.0) {
+        printf("Rejected: barycentric coordinates out of bounds (u = %f, v = %f)\n", u, v);
+        t = -1.0;
+    }
+    if (t > tMax) {
+        printf("Rejected: t = %f exceeds tMax = %f\n", t, tMax);
+        return;
+    }
+    if (t < tMin) {
+        printf("Rejected: t = %f below tMin = %f\n", t, tMin);
+        return;
+    }
 
     DPAttribute attr;
     attr.hitDistance = t;
-    // printf("t: %f", (float)t);
-    // printf("atrr.hitDistance: %f, attr.bc: (%f, %f)\n", attr.hitDistance, attr.bc.x, attr.bc.y);
+
     float f32t = float(t);
     if (double(f32t) < t) f32t = next_after(f32t);
 
-    // // // // compute the triangle normal
     double3 norm = dcross(double3(v1 - v0), double3(v2 - v0));
-
     uint hit_kind = dot(norm, direction) < 0 ? HIT_KIND_TRIANGLE_FRONT_FACE
                                              : HIT_KIND_TRIANGLE_BACK_FACE;
 
     ReportHit(f32t, hit_kind, attr);
 }
+
 
 // ------------------------------------------------- Helper functions -------------------------------------------------
 
