@@ -43,6 +43,9 @@ void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payloa
         payload.vol_ids.y = record.vols[0];
         payload.next_vol = record.forward_vol;
     }
+    int instanceID = InstanceID();
+
+    printf("Primitive ID: %i, prim_MeshID: %i, instance_MeshID: %i\n", PrimitiveIndex(), record.prim_ids[PrimitiveIndex()], instanceID);
     payload.distance = attr.hitDistance;
     payload.surf_id = record.surf_id;
     payload.normal = record.normals[PrimitiveIndex()];
@@ -86,9 +89,9 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     payload.tlas = record.world;
 
 
-    uint rayFlagCull = (rayFirePC.orientation == 1)
-                   ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
-                   : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    // uint rayFlagCull = (rayFirePC.orientation == 1)
+    //                ? RAY_FLAG_CULL_FRONT_FACING_TRIANGLES
+    //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
 
     // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
@@ -186,6 +189,9 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
         useOrientation = true;
     }
 
+
+
+
     int primID = PrimitiveIndex();
     int3 indices = record.index[primID];
     double3 v0 = record.vertex[indices.x];
@@ -199,7 +205,7 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
     float tMax = 10000;
 
     const double3 raya = direction;
-    const double3 rayb = dp_cross(v1 - v0, v2 - v0);
+    const double3 rayb = dp_cross(v1 - v0, v2 - v0); 
 
     double plucker_coord0 = plucker_edge_test(v0, v1, raya, rayb);
     if (useOrientation && orientation * plucker_coord0 > 0) {
@@ -273,6 +279,18 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
     if (double(f32t) < t) f32t = next_after(f32t);
 
     double3 norm = dcross(double3(v1 - v0), double3(v2 - v0));
+    // sense check 
+    if (record.sense == 1) {
+        norm = -norm; // reverse the normal if the triangle is reverse sense
+        printf("Reverse the normal \n");
+    }
+
+    if (orientation_cull(direction, norm, orientation)) 
+    {
+        printf("Rejected: Orientation does not match sense \n ");
+        return;
+    }
+
     uint hit_kind = dot(norm, direction) < 0 ? HIT_KIND_TRIANGLE_FRONT_FACE
                                              : HIT_KIND_TRIANGLE_BACK_FACE;
 
@@ -281,6 +299,13 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
 
 // ------------------------------------------------- Helper functions -------------------------------------------------
+
+bool orientation_cull(in double3 ray, in double3 normal, in int orientation) {
+    if (orientation == -1) return false; // No culling
+    if (orientation == 0) return dot(ray, normal) < 0.0; // Cull exiting rays
+    if (orientation == 1) return dot(ray, normal) >= 0.0; // Cull entering rays
+    return false; // Default case, no culling
+}
 
 // Double precision cross product
 double3 dp_cross(in double3 a, in double3 b) { return double3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
