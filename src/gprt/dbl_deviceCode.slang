@@ -106,11 +106,11 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
 }
 
 [shader("raygeneration")]
-void point_in_volume(uniform dblRayGenData record, uniform TrianglesGeomData mesh) {
+void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
-    // printf("Ray Generation Shader called with :");
+    printf("Point in Volume Ray Generation Shader called\n");
     // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
     // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
     // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
@@ -291,6 +291,18 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
         return;
     }
 
+    if (record.ray[rayID].exclude_count == 1) 
+    {
+        printf("primitive id: %d, exlclude_prim: %d \n", record.prim_ids[primID], record.ray[rayID].exclude_primitives[0]);
+    }
+        for (int i = 0; i < record.ray[rayID].exclude_count; ++i)
+    {
+        if (record.ray[rayID].exclude_primitives[i] == primID) {
+            printf("Rejected: primitive %d is in the exclude list\n", primID);
+            return;
+        }
+    }
+
     uint hit_kind = dot(norm, direction) < 0 ? HIT_KIND_TRIANGLE_FRONT_FACE
                                              : HIT_KIND_TRIANGLE_BACK_FACE;
 
@@ -303,9 +315,10 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 bool orientation_cull(in double3 ray, in double3 normal, in int orientation) {
     if (orientation == -1) return false; // No culling
     if (orientation == 0) return dot(ray, normal) < 0.0; // Cull exiting rays
-    if (orientation == 1) return dot(ray, normal) >= 0.0; // Cull entering rays
+    if (orientation == 1) return dot(ray, normal) > 0.0; // Cull entering rays
     return false; // Default case, no culling
 }
+
 
 // Double precision cross product
 double3 dp_cross(in double3 a, in double3 b) { return double3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
