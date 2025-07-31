@@ -6,18 +6,12 @@ PushConstants pc;
 [[vk::push_constant]]
 RayFirePushConstants rayFirePC;
 
-struct Payload {
-    float3 color;
-};
-
-struct RayFirePayload {
+struct Payload { 
     double distance;    // Distance to intersection
     int surf_id;     // ID of the surface hit
     int2 vol_ids;       // ID of the volume the ray is in
-    SurfaceAccelerationStructure tlas;
     int next_vol;      // ID of the next volume
-    double3 normal;
-    uint hit_kind; // Kind of hit (front or back face)
+    int parity_count; // Number of intersections with the volume (for point in volume)
 };
 
 struct DPAttribute
@@ -25,53 +19,27 @@ struct DPAttribute
   double hitDistance; // barycentrics
 };
 
-
-[shader("closesthit")]
-void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payload, in DPAttribute attr) {
-    // Distance from the ray origin to the hit point
-    uint hit_kind = HitKind();
-    uint rayID = DispatchRaysIndex().x;
-
-
-    if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE){
-        payload.vol_ids.x = record.vols[0];
-        payload.vol_ids.y = record.vols[1];
-        payload.next_vol = record.reverse_vol;
-    }
-    else {
-        payload.vol_ids.x = record.vols[1];
-        payload.vol_ids.y = record.vols[0];
-        payload.next_vol = record.forward_vol;
-    }
-    int instanceID = InstanceID();
-
-    printf("Primitive ID: %i, prim_MeshID: %i, instance_MeshID: %i\n", PrimitiveIndex(), record.prim_ids[PrimitiveIndex()], instanceID);
-    payload.distance = attr.hitDistance;
-    payload.surf_id = record.surf_id;
-    payload.normal = record.normals[PrimitiveIndex()];
-    payload.hit_kind = hit_kind;
-}
-
+// ------------------------------------------------- Miss Shader -------------------------------------------------
+// GPRT doesnt seem to support multiple miss shaders, so we will use a single miss shader (and payload) for all ray queries
 [shader("miss")]
-void ray_fire_miss(inout RayFirePayload payload) {
+void ray_fire_miss(inout Payload payload) {
     // Set the miss payload to default values
     payload.distance = -1.0f;
     payload.surf_id = ~0u;
-    payload.normal = {0.0, 0.0, 0.0};
+    payload.parity_count = 0;
     printf("Miss shader called!\n");
 }
 
-// This ray generation program will kick off the ray tracing process,
-// generating rays and tracing them into the world.
+// ------------------------------------------------- Ray Fire Shaders -------------------------------------------------
 [shader("raygeneration")]
 void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
-    RayFirePayload payload;
+    Payload payload;
     uint rayID = DispatchRaysIndex().x;
 
-    printf("Ray Generation Shader called with :");
-    printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
-    printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
-    printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
+    // // printf("Ray Generation Shader called with :");
+    // // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    // // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    // // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
 
     // Trace the ray into the scene
     RayDesc rayDesc;
@@ -86,7 +54,6 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
     payload.surf_id = ~0u;
-    payload.tlas = record.world;
 
 
     // uint rayFlagCull = (rayFirePC.orientation == 1)
@@ -94,10 +61,10 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     //                : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
 
-    // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
-    // printf("Orientation: %u\n", rayFirePC.orientation);
-    // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
-    // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
+    // // printf("Distance Limit: %f\n", rayFirePC.dist_limit);
+    // // printf("Orientation: %u\n", rayFirePC.orientation);
+    // // printf("TMax before TraceRay: %f\n PC.dist_limit: %f\n", rayDesc.TMax, rayFirePC.dist_limit);
+    // // printf("Exclude_primitive size: %i \n", record.ray.exclude_count);
     TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 1, 0, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
@@ -105,33 +72,79 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     record.out[rayID].surf_id = payload.surf_id;
 }
 
-[shader("raygeneration")]
-void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
-    RayFirePayload payload;
+[shader("closesthit")]
+void ray_fire_hit(uniform DPTriangleGeomData record, inout Payload payload, in DPAttribute attr) {
+    // Distance from the ray origin to the hit point
+    uint hit_kind = HitKind();
     uint rayID = DispatchRaysIndex().x;
 
-    printf("Point in Volume Ray Generation Shader called\n");
-    // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
-    // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
-    // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
+
+    if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE){
+        printf("Hit Kind: Front Face \n");
+        payload.vol_ids.x = record.vols[0];
+        payload.vol_ids.y = record.vols[1];
+        payload.next_vol = record.reverse_vol;
+    }
+    else {
+        printf("Hit Kind: Back Face \n");
+        payload.vol_ids.x = record.vols[1];
+        payload.vol_ids.y = record.vols[0];
+        payload.next_vol = record.forward_vol;
+    }
+    int instanceID = InstanceID();
+
+    // printf("Primitive ID: %i, prim_MeshID: %i, instance_MeshID: %i\n", PrimitiveIndex(), record.prim_ids[PrimitiveIndex()], instanceID);
+    // printf("Hit Kind: %u, Distance: %f, Surface ID: %u\n", hit_kind, attr.hitDistance, record.surf_id);
+    payload.distance = attr.hitDistance;
+    payload.surf_id = record.surf_id;
+    payload.parity_count++;
+
+    printf("closestHit was called ... \n");
+}
+
+// ------------------------------------------------- Point in Volume Shaders -------------------------------------------------
+[shader("raygeneration")]
+void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
+    Payload payload;
+    payload.parity_count = 0;
+    uint rayID = DispatchRaysIndex().x;
+
+    // // printf("Point in Volume Ray Generation Shader called\n");
+    // // printf("Ray Origin: (%f, %f, %f)\n", record.ray.origin.x, record.ray.origin.y, record.ray.origin.z);
+    // // printf("Ray Direction: (%f, %f, %f)\n", record.ray.direction.x, record.ray.direction.y, record.ray.direction.z);
+    // // printf("Excluded Primitives.size(): %i \n", record.ray.exclude_count);
 
     // Trace the ray into the scene
     RayDesc rayDesc;
     rayDesc.Origin = float3(record.ray[rayID].origin);
     rayDesc.Direction = float3(normalize(record.ray[rayID].direction));
-    rayDesc.TMin = 1e-4f; // non-zero to avoid self-intersection
+    rayDesc.TMin = 0.0f; // non-zero to avoid self-intersection
     rayDesc.TMax = 1e30f;
 
     // Pass the ray's origin and direction to the payload
-    payload.surf_id = ~0u;
-    payload.tlas = record.world;
+    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 1, 2, 0, rayDesc, payload);
 
-    TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 2, 0, rayDesc, payload);
+    // count number of front face intersections to determine if the ray is inside or outside the volume
+    printf("payload.parity_count = %u\n", payload.parity_count);
+    record.out[rayID].piv_check = (payload.parity_count % 2) == 1;
+}
 
-    // Store the result of the point in volume check and the surface ID of the primitive hit
-    // 0 = outside, 1 = inside
-    record.out[rayID].normal = payload.normal; 
-    record.out.surf_id = payload.surf_id;
+[shader("anyhit")]
+void point_in_volume_parity_check(inout Payload payload) {
+    printf("Point in Volume Any Hit Shader called\n");
+    uint hit_kind = HitKind();
+    // if (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE) {
+        // printf("Point in Volume Hit Kind: Front Face \n");
+        payload.parity_count++;
+    // } 
+    // continue traversal to next hit
+}
+
+[shader("closesthit")]
+void point_in_volume_closest_hit() 
+{
+    // This shader is intentionally left empty. The closest hit shader is not used for point in volume queries.
+    // The parity check is done in the any hit shader.
 }
 
 // ------------------------------------------------- Compute Shaders -------------------------------------------------
@@ -149,7 +162,7 @@ populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGe
     double3 dpaabbmax = max(max(A, B), C);
     float3 fpaabbmin = float3(dpaabbmin - float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
     float3 fpaabbmax = float3(dpaabbmax + float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
-    // printf("AABB %i: min(%f, %f, %f), max(%f, %f, %f)\n", primID, fpaabbmin.x, fpaabbmin.y, fpaabbmin.z,
+    // // printf("AABB %i: min(%f, %f, %f), max(%f, %f, %f)\n", primID, fpaabbmin.x, fpaabbmin.y, fpaabbmin.z,
     //        fpaabbmax.x, fpaabbmax.y, fpaabbmax.z);
     record.aabbs[2 * primID] = fpaabbmin;
     record.aabbs[2 * primID + 1] = fpaabbmax;
@@ -201,8 +214,8 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
     double3 origin = record.ray[rayID].origin;
     double3 direction = record.ray[rayID].direction;
 
-    float tMin = 0.0;
-    float tMax = 10000;
+    float tMin = 0.0f;
+    float tMax = 1e30f;
 
     const double3 raya = direction;
     const double3 rayb = dp_cross(v1 - v0, v2 - v0); 
@@ -277,8 +290,9 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     float f32t = float(t);
     if (double(f32t) < t) f32t = next_after(f32t);
+printf("verts: v0=(%f,%f,%f), v1=(%f,%f,%f), v2=(%f,%f,%f)\n", v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
 
-    double3 norm = dcross(double3(v1 - v0), double3(v2 - v0));
+    double3 norm = normalize(dcross(double3(v1 - v0), double3(v2 - v0)));
     // sense check 
     if (record.sense == 1) {
         norm = -norm; // reverse the normal if the triangle is reverse sense
@@ -305,6 +319,12 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record, uniform db
 
     uint hit_kind = dot(norm, direction) < 0 ? HIT_KIND_TRIANGLE_FRONT_FACE
                                              : HIT_KIND_TRIANGLE_BACK_FACE;
+
+printf("normal = (%f, %f, %f)\n", norm.x, norm.y, norm.z);
+printf("direction = (%f, %f, %f)\n", direction.x, direction.y, direction.z);
+printf("dot(norm, direction) = %f\n", dot(norm, direction));
+printf("Assigned hit_kind = %s\n", hit_kind);
+
 
     ReportHit(f32t, hit_kind, attr);
 }

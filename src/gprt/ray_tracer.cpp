@@ -49,8 +49,12 @@ void GPRTRayTracer::setup_shaders()
   // Create a "triangle" geometry type and set its closest-hit program
   // trianglesGeomType_ = gprtGeomTypeCreate<TrianglesGeomData>(context_, GPRT_TRIANGLES);
   trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
-  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 0, module_, "ray_fire_hit"); // closesthit for ray queries
+  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 0, module_, "ray_fire_hit"); // closesthit for ray fire queries
   gprtGeomTypeSetIntersectionProg(trianglesGeomType_, 0, module_, "DPTrianglePluckerIntersection"); // set intersection program for double precision rays
+
+  gprtGeomTypeSetAnyHitProg(trianglesGeomType_, 1, module_, "point_in_volume_parity_check"); // anyhit for point in volume queries
+  gprtGeomTypeSetIntersectionProg(trianglesGeomType_, 1, module_, "DPTrianglePluckerIntersection"); // set intersection program for double precision rays
+  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 1, module_, "point_in_volume_closest_hit"); // closesthit for ray fire queries
 
   // gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 1, module_, "render_hits"); // cloesthit for mesh rendering
 }
@@ -297,9 +301,13 @@ bool GPRTRayTracer::point_in_volume(TreeID tree,
                                     const Direction* direction,
                                     const std::vector<MeshID>* exclude_primitives) const
 {
+
   GPRTAccel volume = tree_to_vol_accel_map.at(tree);
   dblRayGenData* rayGenPIVData = gprtRayGenGetParameters(rayGenPointInVolProgram_);
   rayGenPIVData->world = gprtAccelGetDeviceAddress(volume);
+  rayGenPIVData->orientation = static_cast<int>(HitOrientation::ANY); 
+  rayGenPIVData->tFar = INFTY; // Set a large distance limit for the ray fire
+
 
   // Use provided direction or if Direction == nulptr use default direction
   Direction directionUsed = (direction != nullptr) ? Direction{direction->x, direction->y, direction->z} 
@@ -335,7 +343,7 @@ bool GPRTRayTracer::point_in_volume(TreeID tree,
   gprtBufferMap(rayOutputBuffer_);
   dblRayOutput* rayOutput = gprtBufferGetHostPointer(rayOutputBuffer_);
   auto surface = rayOutput[0].surf_id;
-  Direction normal = {rayOutput[0].normal.x, rayOutput[0].normal.y, rayOutput[0].normal.z};
+  auto piv_check = rayOutput[0].piv_check; // 0 for no hit, 1 for hit
   gprtBufferUnmap(rayOutputBuffer_); // required to sync buffer back on GPU? Maybe this second unmap isn't actually needed since we dont need to resyncrhonize after retrieving the data from device
   
   // if ray hit nothing, the point is outside volume
@@ -344,11 +352,9 @@ bool GPRTRayTracer::point_in_volume(TreeID tree,
   // use the hit triangle normal to determine if the intersection is exiting or entering
   // TODO - Do this on GPU and return an int 1 or 0 to represent the bool?
 
-  printf("Point in Volume Check: surface=%d, normal=(%f, %f, %f)\n", surface, normal.x, normal.y, normal.z);
-  printf("Point in Volume Check: directionUsed=(%f, %f, %f)\n", directionUsed.x, directionUsed.y, directionUsed.z);
-  printf("Point in Volume Check: dot=%f\n", directionUsed.dot(normal));
+  printf("point_in_vol check: %u\n", piv_check);
 
-  return directionUsed.dot(normal) > 0.0;
+  return piv_check;
 }
 
 

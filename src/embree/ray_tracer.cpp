@@ -136,6 +136,9 @@ bool EmbreeRayTracer::point_in_volume(TreeID tree,
     rtcIntersect1(scene, (RTCRayHit*)&rayhit);
   }
 
+  printf("point_in_volume: rayHit.normal: (%f, %f, %f)\n",
+         rayhit.hit.dNg[0], rayhit.hit.dNg[1], rayhit.hit.dNg[2]);
+
   // if the ray hit nothing, the point is outside of the volume
   if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID) return false;
 

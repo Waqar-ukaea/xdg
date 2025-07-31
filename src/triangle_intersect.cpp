@@ -82,7 +82,7 @@ void TriangleIntersectionFunc(RTCIntersectFunctionNArguments* args) {
    if (orientation_cull(rayhit->ray.ddir, normal, rayhit->ray.orientation)) return;
    if (primitive_mask_cull(rayhit, primitive_ref.primitive_id)) return;
   }
-
+  
   // if we've gotten through all of the filters, set the ray information
   rayhit->ray.set_tfar(plucker_dist);
   // zero-out barycentric coords

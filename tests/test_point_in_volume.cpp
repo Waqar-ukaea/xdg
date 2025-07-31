@@ -97,7 +97,6 @@ TEST_CASE("Test Point in Volume GPRT-MeshMock")
   REQUIRE(result == true);
   // TODO - this is failing because we are on the boundary and firing in a direction outside the volume 
 
-
   // test a point just outside the positive x boundary
   // and provide a direction
   point = {5.1, 0.0, 0.0};

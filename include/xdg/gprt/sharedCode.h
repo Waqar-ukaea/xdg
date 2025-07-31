@@ -35,6 +35,7 @@ struct dblRayOutput
   double distance;
   uint surf_id;
   double3 normal;
+  uint piv_check;
 };
 
 /* variables for the single precision triangle mesh geometry */
@@ -76,6 +77,7 @@ struct dblRayGenData {
   dblRayInput *ray;
   dblRayOutput *out;
   int orientation; // Orientation of the ray (0 for exiting, 1 for entering)
+  double tFar; // Distance limit for ray fire
 };
 
 struct RayFireData {
