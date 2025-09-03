@@ -87,8 +87,8 @@ namespace xdg {
 
       // Array version of ray_fire
       void batch_ray_fire(TreeID tree,
-                                  const Position* origin,
-                                  const Direction* direction,
+                                  const Position* origins,
+                                  const Direction* directions,
                                   const size_t num_rays,
                                   double* hitDistances,
                                   MeshID* surfaceIDs,
