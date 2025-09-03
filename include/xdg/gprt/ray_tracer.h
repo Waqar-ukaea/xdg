@@ -77,30 +77,24 @@ namespace xdg {
         // Fire a ray and return the distance to the closest intersection
 
 
-        // Array version of point_in_volume
-        void batch_point_in_volume(TreeID tree,
-                                          const Position* points,
-                                          const Direction* directions,
-                                          const size_t num_points,
-                                          uint8_t* results,
-                                          std::vector<MeshID>* exclude_primitives = nullptr) const override
-        {
+      // Array version of point_in_volume
+      void batch_point_in_volume(TreeID tree,
+                                        const Position* points,
+                                        const Direction* const* directions, // [num_points] array of Direction pointers
+                                        const size_t num_points,
+                                        uint8_t* results,
+                                        std::vector<MeshID>* exclude_primitives = nullptr) const override;
 
-        };
-
-        // Array version of ray_fire
-        void batch_ray_fire(TreeID tree,
-                                    const Position* origin,
-                                    const Direction* direction,
-                                    const size_t num_rays,
-                                    double* hitDistances,
-                                    MeshID* surfaceIDs,
-                                    const double dist_limit = INFTY,
-                                    HitOrientation orientation = HitOrientation::EXITING,
-                                    std::vector<MeshID>* const exclude_primitives = nullptr) override
-        {
-
-        };
+      // Array version of ray_fire
+      void batch_ray_fire(TreeID tree,
+                                  const Position* origin,
+                                  const Direction* direction,
+                                  const size_t num_rays,
+                                  double* hitDistances,
+                                  MeshID* surfaceIDs,
+                                  const double dist_limit = INFTY,
+                                  HitOrientation orientation = HitOrientation::EXITING,
+                                  std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
       void closest(TreeID scene,
                   const Position& origin,

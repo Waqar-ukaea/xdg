@@ -11,9 +11,8 @@ GPRTRayTracer::GPRTRayTracer()
   context_ = gprtContextCreate();
   module_ = gprtModuleCreate(context_, dbl_deviceCode);
 
-  numRays = 1; // Set the number of rays to be cast
-  rayInputBuffer_ = gprtDeviceBufferCreate<dblRayInput>(context_, numRays);
-  rayOutputBuffer_ = gprtDeviceBufferCreate<dblRayOutput>(context_, numRays); 
+  rayInputBuffer_ = gprtDeviceBufferCreate<dblRayInput>(context_); // initialise buffer of size 1
+  rayOutputBuffer_ = gprtDeviceBufferCreate<dblRayOutput>(context_); // initialise buffer of size 1 
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
 
   setup_shaders();
@@ -292,6 +291,84 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(TreeID tree,
     if (exclude_primitives) exclude_primitives->push_back(primitive_id);
   return {distance, surface};
 }
+
+void GPRTRayTracer::batch_point_in_volume(TreeID tree,
+                                          const Position* points,
+                                          const Direction* const* directions, // [num_points] array of Direction pointers
+                                          const size_t num_points,
+                                          uint8_t* results,
+                                          std::vector<MeshID>* exclude_primitives) const
+{
+  if (num_points == 0) return; // no work to do. Early exit
+
+  GPRTAccel volume = tree_to_vol_accel_map.at(tree);
+  dblRayGenData* rayGenPIVData = gprtRayGenGetParameters(rayGenPointInVolProgram_);
+  rayGenPIVData->world = gprtAccelGetDeviceAddress(volume);
+
+  // Set a default direction to be used if no direction is provided
+  const Direction defaultDir = Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
+
+  // resize buffers to the number of points to be queried
+  gprtBufferResize(context_, rayInputBuffer_, num_points, false);
+  gprtBufferResize(context_, rayOutputBuffer_, num_points, false);
+
+  // TODO - handle exclude_primitives for batch version
+
+  // Map the region start
+  gprtBufferMap(rayInputBuffer_); 
+  dblRayInput* rayInput = gprtBufferGetHostPointer(rayInputBuffer_);
+  for (size_t i = 0; i < num_points; ++i) {
+    const auto& point = points[i];
+    const auto& direction = directions[i];
+
+    const Direction* dptr = directions ? directions[i] : nullptr; // if directions array is empty. Set dptr to nullptr
+    const Direction directionUsed = dptr ? *dptr : defaultDir; // if dptr is nullptr use default direction, othewise dereference to actual Direction
+
+    rayInput[i].origin = {point.x, point.y, point.z};
+    rayInput[i].direction = {directionUsed.x, directionUsed.y, directionUsed.z};
+    rayInput[i].tMax = INFTY; // Set a large distance limit
+    rayInput[i].tMin = 0.0;
+    rayInput[i].volume_tree = tree; // Set the TreeID of the volume being queried
+    rayInput[i].hitOrientation = -1; // No orientation culling for point-in-volume check
+    rayInput[i].exclude_primitives = nullptr; // Not currently supported in batch version
+  }
+
+  gprtBufferUnmap(rayInputBuffer_); // required to sync buffer back on GPU?
+  gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
+
+  gprtRayGenLaunch1D(context_, rayGenPointInVolProgram_, num_points);
+
+  // Retrieve the output from the ray output buffer
+  gprtBufferMap(rayOutputBuffer_);
+  dblRayOutput* rayOutput = gprtBufferGetHostPointer(rayOutputBuffer_);
+  for (size_t i = 0; i < num_points; ++i) {
+    auto surface = rayOutput[i].surf_id;
+    auto piv = rayOutput[i].piv; // Point in volume check result
+    // if ray hit nothing, the point is outside volume
+    results[i] = (surface == ID_NONE) ? 0 : piv;
+  }
+  gprtBufferUnmap(rayOutputBuffer_); // required to sync buffer back on GPU? Maybe this second unmap isn't actually needed since we dont need to resyncrhonize after retrieving the data from device
+  
+  return;
+}
+  
+
+
+// Array version of ray_fire
+void GPRTRayTracer::batch_ray_fire(TreeID tree,
+                                   const Position* origin,
+                                   const Direction* direction,
+                                   const size_t num_rays,
+                                   double* hitDistances,
+                                   MeshID* surfaceIDs,
+                                   const double dist_limit,
+                                   HitOrientation orientation,
+                                   std::vector<MeshID>* const exclude_primitives)
+{
+
+  return;
+}
+
                 
 void GPRTRayTracer::create_world_tlas()
 {

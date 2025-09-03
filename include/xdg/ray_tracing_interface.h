@@ -92,7 +92,7 @@ public:
   // Array version of point_in_volume
   virtual void batch_point_in_volume(TreeID tree,
                                      const Position* points,
-                                     const Direction* directions,
+                                     const Direction* const* directions, // [num_points] array of Direction pointers
                                      const size_t num_points,
                                      uint8_t* results,
                                      std::vector<MeshID>* exclude_primitives = nullptr) const = 0;
