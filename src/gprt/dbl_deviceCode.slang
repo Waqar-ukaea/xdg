@@ -80,7 +80,6 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
 
 [shader("raygeneration")]
 void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
-    RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
     // Trace the ray into the scene
@@ -90,14 +89,14 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     rayDesc.TMin = float(record.ray[rayID].tMin); 
     rayDesc.TMax = float(record.ray[rayID].tMax); 
 
-    // Pass the ray's origin and direction to the payload
+    RayFirePayload payload;
     payload.surf_id = -1;
     payload.tlas = record.world;
     payload.piv = PointInVolume::Outside; // Initialize point in volume check result to outside (0)
     
     TraceRay(record.world, RAY_FLAG_NONE, 0xff, 0, 1, 0, rayDesc, payload);
 
-    record.out.surf_id = payload.surf_id;
+    record.out[rayID].surf_id = payload.surf_id;
     record.out[rayID].piv = payload.piv; // Point in volume check result
 }
 

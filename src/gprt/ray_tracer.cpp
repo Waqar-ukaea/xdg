@@ -303,7 +303,6 @@ void GPRTRayTracer::batch_point_in_volume(TreeID tree,
 
   GPRTAccel volume = tree_to_vol_accel_map.at(tree);
   dblRayGenData* rayGenPIVData = gprtRayGenGetParameters(rayGenPointInVolProgram_);
-  rayGenPIVData->world = gprtAccelGetDeviceAddress(volume);
 
   // Set a default direction to be used if no direction is provided
   const Direction defaultDir = Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
@@ -311,6 +310,12 @@ void GPRTRayTracer::batch_point_in_volume(TreeID tree,
   // resize buffers to the number of points to be queried
   gprtBufferResize(context_, rayInputBuffer_, num_points, false);
   gprtBufferResize(context_, rayOutputBuffer_, num_points, false);
+
+  // Since we have resized the ray input buffer, we need to update the geom_data->rayIn pointers in all geometries 
+  for (auto const& [surf, geom] : surface_to_geometry_map_) {
+    DPTriangleGeomData* geom_data = gprtGeomGetParameters(geom);
+    geom_data->rayIn = gprtBufferGetDevicePointer(rayInputBuffer_); 
+  }
 
   // TODO - handle exclude_primitives for batch version
 
@@ -334,6 +339,12 @@ void GPRTRayTracer::batch_point_in_volume(TreeID tree,
   }
 
   gprtBufferUnmap(rayInputBuffer_); // required to sync buffer back on GPU?
+
+  // set buffers for ray gen
+  rayGenPIVData->world = gprtAccelGetDeviceAddress(volume);
+  rayGenPIVData->ray = gprtBufferGetDevicePointer(rayInputBuffer_);
+  rayGenPIVData->out = gprtBufferGetDevicePointer(rayOutputBuffer_);
+
   gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
 
   gprtRayGenLaunch1D(context_, rayGenPointInVolProgram_, num_points);
@@ -342,10 +353,8 @@ void GPRTRayTracer::batch_point_in_volume(TreeID tree,
   gprtBufferMap(rayOutputBuffer_);
   dblRayOutput* rayOutput = gprtBufferGetHostPointer(rayOutputBuffer_);
   for (size_t i = 0; i < num_points; ++i) {
-    auto surface = rayOutput[i].surf_id;
     auto piv = rayOutput[i].piv; // Point in volume check result
-    // if ray hit nothing, the point is outside volume
-    results[i] = (surface == ID_NONE) ? 0 : piv;
+    results[i] = static_cast<uint8_t>(piv);
   }
   gprtBufferUnmap(rayOutputBuffer_); // required to sync buffer back on GPU? Maybe this second unmap isn't actually needed since we dont need to resyncrhonize after retrieving the data from device
   
