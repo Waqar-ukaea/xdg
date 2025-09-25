@@ -15,9 +15,7 @@
 #include "gprt/gprt.h"
 #include "sharedCode.h"
 
-// extern GPRTProgram flt_deviceCode;
 extern GPRTProgram dbl_deviceCode;
-
 namespace xdg {
 
   class GPRTRayTracer : public RayTracer {
