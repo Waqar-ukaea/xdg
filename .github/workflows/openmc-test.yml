@@ -27,6 +27,25 @@ jobs:
                               libeigen3-dev \
                               cmake
 
+      - name: GPRT Apt Dependencies
+        shell: bash
+        run: |
+          sudo apt install -y \
+          libpthread-stubs0-dev \
+          libx11-xcb-dev \
+          xorg-dev \
+          libxinerama-dev \
+          libglu1-mesa-dev \
+          freeglut3-dev \
+          mesa-common-dev \
+          libglfw3
+
+      - name: Prepare Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true  
+
       - name: Environment Variables
         run: |
           echo "OPENMC_CROSS_SECTIONS=$HOME/nndc_hdf5/cross_sections.xml" >> $GITHUB_ENV
@@ -99,6 +118,7 @@ jobs:
       - name: Build XDG
         shell: bash
         run: |
+          export LD_LIBRARY_PATH=$VULKAN_SDK/lib:$LD_LIBRARY_PATH
           mkdir build
           cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/opt -DCMAKE_PREFIX_PATH="$HOME/MOAB;$HOME/LIBMESH" -DXDG_ENABLE_MOAB=ON -DXDG_ENABLE_LIBMESH=ON -DXDG_ENABLE_GPRT=ON
