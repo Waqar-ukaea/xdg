@@ -140,5 +140,5 @@ jobs:
           OMP_NUM_THREADS=2 pytest tests/regression_tests/dagmc/legacy tests/regression_tests/dagmc/universes tests/regression_tests/xdg
 
       - name: Setup tmate session
-        if: ${{ failure() }}
+        # if: ${{ failure() }}
         uses: mxschmitt/action-tmate@v3
