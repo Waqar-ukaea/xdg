@@ -18,7 +18,7 @@ TEST_CASE("Test MOAB Mesh Without Geometry")
   // there will be two volumes: one for the cube and one for the implicit complement
   REQUIRE(mesh_manager->num_volumes() == 2);
   // one surface (the boundary of the mesh) separates the two volumes
-  REQUIRE(mesh_manager->num_surfaces() == 1);
+  REQUIRE(mesh_manager->num_surfaces() == 2); // set to 2 to force CI to fail
 
   REQUIRE(mesh_manager->num_volume_elements() == 8814);
 }
