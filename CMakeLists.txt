@@ -6,6 +6,7 @@ option(XDG_ENABLE_MFEM    "Enable support for the MFEM mesh library"         OFF
 option(XDG_ENABLE_LIBMESH "Enable support for the libMesh mesh library"      OFF)
 option(XDG_ENABLE_EMBREE  "Enable support for the Embree ray tracing library" ON)
 option(XDG_ENABLE_GPRT    "Enable support for the GPRT ray tracing library"  OFF)
+option(XDG_ENABLE_GPRT    "Enable support for the GPRT ray tracing library"  OFF)
 option(XDG_BUILD_TESTS    "Enable C++ unit testing"                           ON)
 option(XDG_BUILD_TOOLS    "Enable tools and miniapps"                         ON)
 
@@ -109,6 +110,21 @@ if (XDG_ENABLE_GPRT)
   add_subdirectory(vendor/GPRT)
 endif() 
 
+# Ensure at least one ray tracing backend is enabled
+if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT)
+  message(FATAL_ERROR
+    "No ray tracing backend enabled. Enable at least one of:\n"
+    "  -DXDG_ENABLE_EMBREE=ON\n"
+    "  -DXDG_ENABLE_GPRT=ON")
+endif()
+
+
+# GPRT
+set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
+if (XDG_ENABLE_GPRT)
+  add_subdirectory(vendor/GPRT)
+endif() 
+
 list(APPEND xdg_sources
 src/geometry/measure.cpp
 src/geometry/plucker.cpp
@@ -128,6 +144,16 @@ if (XDG_ENABLE_EMBREE)
 list(APPEND xdg_sources
 src/embree/ray_tracer.cpp
 )
+endif()
+
+if (XDG_ENABLE_GPRT)
+list(APPEND xdg_sources
+src/gprt/ray_tracer.cpp
+)
+list(APPEND xdg_device_codes
+dbl_deviceCode
+)
+
 endif()
 
 if (XDG_ENABLE_GPRT)
@@ -233,6 +259,11 @@ if (XDG_ENABLE_GPRT)
   target_link_options(xdg INTERFACE -Wl,--unresolved-symbols=ignore-in-shared-libs)
 endif()
 
+if (XDG_ENABLE_GPRT)
+  target_compile_definitions(xdg PUBLIC XDG_ENABLE_GPRT)
+  target_link_options(xdg INTERFACE -Wl,--unresolved-symbols=ignore-in-shared-libs)
+endif()
+
 # ==========================
 # Link ray tracing libraries
 # ==========================
@@ -281,6 +312,24 @@ install(TARGETS xdg
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   INCLUDES DESTINATION include
 )
+
+# Install GPRT Targets from shared library
+if (TARGET gprt)
+  install(TARGETS gprt
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+
+# Install targets for each slang file compiled (currently only dbl_deviceCode)
+foreach(device_code ${xdg_device_codes})
+  install(TARGETS ${device_code}
+    EXPORT xdg-targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+endforeach()
 
 # Install GPRT Targets from shared library
 if (TARGET gprt)
