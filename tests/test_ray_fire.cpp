@@ -135,7 +135,7 @@ TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
 
     rti->init();
 
-    // Helper to synthesize origins/directions like your 64-ray pattern, extended to N
+    // Helper to synthesize origins/directions for N rays
     auto make_rays = [](size_t N, std::vector<Position>& origins, std::vector<Direction>& directions) {
       origins.clear(); 
       directions.clear();
@@ -151,6 +151,10 @@ TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
       }
     };
 
+    std::vector<Position> origins;
+    std::vector<Direction> directions;
+    size_t N; 
+
     // ---- N = 0 ----
     SECTION("N=0 no-op") {
       rti->ray_fire(volume_tree, nullptr, nullptr, 0, nullptr, nullptr,
@@ -160,9 +164,8 @@ TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
 
     // ---- N = 1 ----
     SECTION("N=1 equals scalar") {
-      std::vector<Position> origins;
-      std::vector<Direction> directions;
-      make_rays(1, origins, directions);
+      N = 1;
+      make_rays(N, origins, directions);
 
       auto [dist_scalar, id_scalar] = rti->ray_fire(volume_tree, origins[0], directions[0], INFTY, HitOrientation::EXITING);
 
@@ -177,9 +180,8 @@ TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
 
     // ---- N = 64 ----
     SECTION("N=64 matches scalar for all") {
-      std::vector<Position> origins;
-      std::vector<Direction> directions;
-      make_rays(64, origins, directions);
+      N = 64;
+      make_rays(N, origins, directions);
 
       std::vector<double> dist_scalar(64, INFTY);
       std::vector<MeshID> id_scalar(64, ID_NONE);
@@ -201,9 +203,7 @@ TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
 
     // ---- N = 100,000 ----
     SECTION("N=100,00 batch with basic sanity checks") {
-      const size_t N = 100000;
-      std::vector<Position> origins;
-      std::vector<Direction> directions;
+      N = 100000;
       make_rays(N, origins, directions);
 
       // Batch compute
