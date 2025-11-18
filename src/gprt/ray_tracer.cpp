@@ -418,6 +418,7 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   check_ray_buffer_capacity(num_rays);
     
   gprtBufferMap(rayHitBuffers_.ray); 
+  const auto volAddr = gprtAccelGetDeviceAddress(volume);
   Ray* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
   for (size_t i = 0; i < num_rays; ++i) {
     const auto& origin = origins[i];
@@ -431,7 +432,7 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
 
   // Set push constants (same for every ray)
-  dblRayFirePushConstants pushConstants;
+  RayFirePushConstants pushConstants;
   pushConstants.hitOrientation = orientation;
   pushConstants.tMax = dist_limit;
   pushConstants.tMin = 0.0;
