@@ -140,13 +140,12 @@ class GPRTRayTracer : public RayTracer {
 
     // GPRT objects 
     GPRTContext context_;
-    GPRTProgram deviceCode_; // device code for float precision shaders
     GPRTModule module_; // device code module for single precision shaders
     GPRTAccel world_; 
     GPRTBuildParams buildParams_; //<! Build parameters for acceleration structures
 
     // Shader programs
-    std::map<RayGenType, GPRTRayGenOf<dblRayGenData>> rayGenPrograms_;
+    std::map<RayGenType, GPRTRayGenOf<RayGenData>> rayGenPrograms_;
 
     GPRTMissOf<void> missProgram_; 
     GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
@@ -158,13 +157,13 @@ class GPRTRayTracer : public RayTracer {
     
     // Geometry Type and Instances
     std::vector<gprt::Instance> globalBlasInstances_; //<! List of every BLAS instance stored in this ray tracer
-    GPRTGeomTypeOf<DPTriangleGeomData> trianglesGeomType_; //<! Geometry type for triangles
+    GPRTGeomTypeOf<TriangleGeomData> trianglesGeomType_; //<! Geometry type for triangles
 
     // Ray Generation parameters
     uint32_t numRayTypes_ = 1; // <! Number of ray types. Allows multiple shaders to be set to the same geometery
     
     // Mesh-to-Scene maps 
-    std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry
+    std::map<MeshID, GPRTGeomOf<TriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS

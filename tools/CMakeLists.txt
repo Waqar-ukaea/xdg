@@ -6,12 +6,8 @@ find_volume
 point_in_volume
 batch_point_in_volume
 overlap_check
-<<<<<<< HEAD
 walk_elements
 tally_segments
-=======
-ray-benchmark
->>>>>>> b7e61ff (Added a new ray-benchmark tool to compare embree vs gprt ray throughput)
 )
 
 #===============================================================================
