@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
   const auto& mm = xdg->mesh_manager();
   mm->load_file(args.get<std::string>("filename"));
   mm->init();
-  mm->parse_metadata();
+  // mm->parse_metadata();
 
   // Generate a set of random rays
   size_t N = args.get<uint64_t>("--num-rays");
@@ -133,9 +133,7 @@ int main(int argc, char** argv) {
   std::vector<double> hitDistances(N, -1.0);
   std::vector<MeshID> hitElements(N, ID_NONE);
 
-  std::cout << "Starting ray fire benchmark with " << N << " rays"  << " using " 
-            << rt_str << ": \n" << std::endl;
-  auto start = std::chrono::high_resolution_clock::now();
+
 
   if (rt_lib == RTLibrary::GPRT) {
     // GPRT backend supports batch ray fire
@@ -146,14 +144,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> elapsed = end - start;
-  double rays_per_second = static_cast<double>(N) / elapsed.count();
-
-  std::cout << "----------------------------------------" << std::endl;
-  std::cout << "Completed " << N << " rays in " << elapsed.count() << " seconds." << std::endl;
-  std::cout << "Ray tracing throughput: " << rays_per_second << " rays/second." << std::endl;
-  std::cout << "---------------------------------------- \n" << std::endl;
 
 
   return 0;

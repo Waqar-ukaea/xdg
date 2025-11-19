@@ -1,5 +1,11 @@
 #include "xdg/gprt/ray_tracer.h"
 #include "gprt/gprt.h"
+<<<<<<< HEAD
+=======
+
+#include <chrono>
+
+>>>>>>> 87ae6e1 (Move timer to exclude memory transfer around raygen launch)
 namespace xdg {
 
 GPRTRayTracer::GPRTRayTracer()
@@ -430,6 +436,7 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   }
 
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
+<<<<<<< HEAD
 
   // Set push constants (same for every ray)
   RayFirePushConstants pushConstants;
@@ -438,10 +445,19 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   pushConstants.tMin = 0.0;
   pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
   pushConstants.volume_tree = tree;
+=======
+  
+  std::cout << "Starting ray fire benchmark with " << num_rays << " rays"  << " using " 
+            << "GPRT" << ": \n" << std::endl;
+  auto start = std::chrono::high_resolution_clock::now();
+>>>>>>> 87ae6e1 (Move timer to exclude memory transfer around raygen launch)
 
   // Launch the ray generation shader with push constants and buffer bindings
   gprtRayGenLaunch1D(context_, rayGen, num_rays, pushConstants);
   gprtGraphicsSynchronize(context_);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end - start;
+  double rays_per_second = static_cast<double>(num_rays) / elapsed.count();
                                                   
   // Retrieve the output from the ray output buffer
   gprtBufferMap(rayHitBuffers_.hit);
@@ -463,6 +479,7 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   return;
 }
 
+<<<<<<< HEAD
 void 
 GPRTRayTracer::ray_fire_packed(TreeID tree,
                                const size_t num_rays,
@@ -485,6 +502,14 @@ GPRTRayTracer::ray_fire_packed(TreeID tree,
   
   gprtRayGenLaunch1D(context_, rayGen, num_rays, pushConstants);
   gprtGraphicsSynchronize(context_);
+=======
+  std::cout << "----------------------------------------" << std::endl;
+  std::cout << "Completed " << num_rays << " rays in " << elapsed.count() << " seconds." << std::endl;
+  std::cout << "Ray tracing throughput: " << rays_per_second << " rays/second." << std::endl;
+  std::cout << "---------------------------------------- \n" << std::endl;
+
+
+>>>>>>> 87ae6e1 (Move timer to exclude memory transfer around raygen launch)
   return;
 }
 
