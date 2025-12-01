@@ -41,6 +41,7 @@ if (XDG_ENABLE_GPRT)
     xdg_gprt_render_tool
     ray_benchmark
   )
+  find_package(CUDAToolkit REQUIRED)
 
   foreach(tool ${GPRT_TOOLS})
     string(REPLACE "_" "-" tool_exec ${tool})
@@ -58,9 +59,21 @@ if (XDG_ENABLE_GPRT)
       ${CMAKE_CURRENT_SOURCE_DIR}/${tool}_deviceCode.slang
     )
 
+    if (OpenMP_CXX_FOUND)
+        target_link_libraries(${tool_exec} OpenMP::OpenMP_CXX)
+        target_compile_definitions(${tool_exec} PUBLIC XDG_OPENMP)
+    endif()
+
     target_link_libraries(${tool_exec}
       ${tool}_deviceCode
       gprt::gprt
     )
+    # Link CUDA runtime only for ray_benchmark
+    if (tool_exec STREQUAL "ray-benchmark")
+      target_sources(${tool_exec} PRIVATE openmp_memory_interop.cpp)
+      target_link_libraries(${tool_exec} CUDA::cudart)
+      target_include_directories(${tool_exec} PRIVATE ${CUDA_INCLUDE_DIRS})
+      target_compile_definitions(${tool_exec} PUBLIC XDG_ENABLE_CUDA)
+    endif()
   endforeach()
 endif()
