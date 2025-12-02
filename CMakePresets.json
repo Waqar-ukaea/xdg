@@ -84,12 +84,25 @@
             }
         },
         {
-            "name": "llvm_ada",
+            "name": "llvm_ada_unity",
             "inherits": ["llvm"],
             "displayName": "LLVM Clang RTX Ada 2000",
             "environment": {
                 "PRESET_CXX_FLAGS": "-fopenmp-targets=nvptx64 -Xopenmp-target -march=sm_80"
             }
+        },
+        {
+        "name": "llvm_ada",
+        "inherits": ["base"],
+        "displayName": "LLVM Clang RTX Ada 2000 (no unity)",
+        "cacheVariables": {
+            "CMAKE_C_COMPILER": "clang",
+            "CMAKE_CXX_COMPILER": "clang++"
+        },
+        "environment": {
+            "LLVM_CXX_FLAGS": "-fopenmp",
+            "PRESET_CXX_FLAGS": "-fopenmp-targets=nvptx64-nvidia-cuda -Xopenmp-target=nvptx64-nvidia-cuda -march=sm_80"
+        }
         },
         {
             "name": "llvm_v100",
