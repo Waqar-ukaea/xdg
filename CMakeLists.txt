@@ -105,9 +105,18 @@ endif()
 
 
 # GPRT
-set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
 if (XDG_ENABLE_GPRT)
+  set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
   add_subdirectory(vendor/GPRT)
+  # --- Fix 1: disable unity build for glfw target ---
+  # GPRT's glfw target is called 'glfw' (see error path: CMakeFiles/glfw.dir/Unity/...)
+  if (TARGET glfw)
+    message(STATUS "Disabling UNITY_BUILD for target glfw (GPRT 3rdParty)")
+    set_property(TARGET glfw PROPERTY UNITY_BUILD OFF)
+
+    # --- Fix 2: ensure ppoll() is declared on glibc ---
+    target_compile_definitions(glfw PRIVATE _GNU_SOURCE)
+  endif()
 endif()
 
 list(APPEND xdg_sources

@@ -20,7 +20,6 @@
 #include "ray_benchmark_shared.h"
 
 #include <omp.h> // for openmp target offload 
-#include "openmp_memory_interop.h" // for memory interop to CUDA
 
 using namespace xdg;
 extern GPRTProgram ray_benchmark_deviceCode;
@@ -127,13 +126,6 @@ int main(int argc, char** argv) {
   } else {
     fatal_error("Invalid mesh library '{}' specified", mesh_str);
   }
-
-
-
-
-
-
-  std::exit(1); // Early exit to help in testing cuda-openmp memory interop
 
   // Full wall-clock timer (post-argparse)
   Timer wall_timer;
