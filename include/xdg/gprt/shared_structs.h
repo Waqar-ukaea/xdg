@@ -11,22 +11,6 @@ struct GPRTPrimitiveRef
   int sense;
 };
 
-struct Ray 
-{
-  float3 origin;
-  float3 direction;
-  int32_t* exclude_primitives; // Optional for excluding primitives
-  int32_t exclude_count;           // Number of excluded primitives
-};
-
-struct Hit 
-{
-  float distance;
-  int surf_id;
-  int primitive_id;
-  xdg::PointInVolume piv; // Point in volume check result (0 for outside, 1 for inside)
-};
-
 /* variables for single precision triangle mesh geometry */
 struct TriangleGeomData {
   float3 *vertex; // vertex buffer
@@ -36,7 +20,7 @@ struct TriangleGeomData {
   int2 vols;
   int forward_vol;
   int reverse_vol;
-  Ray *ray; // single precision rays
+  xdg::Ray *ray; // single precision rays
   xdg::HitOrientation hitOrientation;
   int forward_tree; // TreeID of the forward volume
   int reverse_tree; // TreeID of the reverse volume
@@ -45,8 +29,8 @@ struct TriangleGeomData {
 };
 
 struct RayGenData {
-  Ray *ray;
-  Hit *hit;
+  xdg::Ray *ray;
+  xdg::Hit *hit;
 };
 
 /* A small structure of constants that can change every frame without rebuilding the
@@ -62,7 +46,7 @@ struct RayFirePushConstants {
 
 // TODO - Drop this in favour of exposing buffers directly
 struct ExternalRayParams {
-  xdg::dblRay* xdgRays;
+  xdg::Ray* xdgRays;
   double3* origins;
   double3* directions;
   uint32_t num_rays;

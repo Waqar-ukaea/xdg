@@ -29,8 +29,8 @@ struct gprtRayHit {
   DeviceRayHitBuffers view; // external facing POD for rayhit buffers
   size_t size = 0; // Current number of active rays 
 
-  GPRTBufferOf<dblRay> ray = nullptr;
-  GPRTBufferOf<dblHit> hit = nullptr;
+  GPRTBufferOf<Ray> ray = nullptr;
+  GPRTBufferOf<Hit> hit = nullptr;
 
   bool is_valid() const { 
     return view.capacity > 0 && ray && hit && view.rayDevPtr && view.hitDevPtr; 
@@ -148,7 +148,7 @@ class GPRTRayTracer : public RayTracer {
     std::map<RayGenType, GPRTRayGenOf<RayGenData>> rayGenPrograms_;
 
     GPRTMissOf<void> missProgram_; 
-    GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
+    GPRTComputeOf<TriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
     GPRTComputeOf<ExternalRayParams> packRaysProgam_; //<! A compute shader to pack raydata defined externally directly into gpu buffers (on device)
     
     // Buffers 

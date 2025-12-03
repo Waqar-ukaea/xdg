@@ -155,6 +155,8 @@ int main(int argc, char** argv) {
   uint32_t seed = args.get<uint32_t>("--seed");
   Position origin = args.get<std::vector<double>>("--origin");
 
+  rt_str.append(" (FP32)");
+
   std::cout << "Volume ID: " << volume << " with: "
             << mm->num_volume_faces(volume) << " faces" << std::endl;
 

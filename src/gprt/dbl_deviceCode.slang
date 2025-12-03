@@ -37,12 +37,12 @@ void ray_fire_anyhit(uniform TriangleGeomData record, inout RayFirePayload paylo
 
     float3 norm = record.normals[primID];
     // sense adjustment of normal
-    if (record.ray[rayID].volume_tree == record.reverse_tree)
+    if (PC.volume_tree == record.reverse_tree)
     {
         norm = -norm;
     }
 
-    xdg::HitOrientation hitOrientation = record.ray[rayID].hitOrientation;
+    xdg::HitOrientation hitOrientation = PC.hitOrientation;
 
     if (orientation_cull(direction, norm, hitOrientation))
     {
