@@ -19,6 +19,8 @@
 #include "gprt/gprt.h"
 #include "ray_benchmark_shared.h"
 
+#include <omp.h> // for openmp target offload 
+
 using namespace xdg;
 extern GPRTProgram ray_benchmark_deviceCode;
 
