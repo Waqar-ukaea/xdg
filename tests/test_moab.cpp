@@ -89,7 +89,7 @@ TEMPLATE_TEST_CASE("Test BVH Build", "[moab][bvh]",
 
 TEMPLATE_TEST_CASE("Test Ray Fire MOAB (all built backends)", "[ray_tracer][moab]",
                    Embree_Raytracer,
-                   GPRT_Raytracer) 
+                   GPRT_Raytracer)
 {
   constexpr auto rt_backend = TestType::value;
 
@@ -280,5 +280,25 @@ TEMPLATE_TEST_CASE("TEST MOAB Find Element Method", "[moab][elements]",
       REQUIRE(segment.first != ID_NONE);
       REQUIRE(segment.second >= 0.0);
     }
+  }
+}
+
+TEST_CASE("MOAB Element ID and Index Mapping")
+{
+  std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB);
+  REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
+  const auto& mesh_manager = xdg->mesh_manager();
+  mesh_manager->load_file("jezebel.h5m");
+  mesh_manager->init();
+
+  size_t num_elements = mesh_manager->num_volume_elements();
+  REQUIRE(num_elements == 10333);
+
+  for (size_t idx = 0; idx < num_elements; ++idx) {
+    MeshID element_id = mesh_manager->element_id(idx);
+    // MOAB element IDs start at 1 and, for this model, are contiguous
+    REQUIRE(element_id == idx + 1);
+    int mapped_idx = mesh_manager->element_index(element_id);
+    REQUIRE(mapped_idx == static_cast<int>(idx));
   }
 }
