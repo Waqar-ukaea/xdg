@@ -46,6 +46,9 @@ foreach(test ${TEST_NAMES})
         PROPERTIES
         SKIP_RETURN_CODE 4 # registers skipped tests with CTest correctly
         TEST_PREFIX "${test}::")
+    # add_test(NAME ${test}
+    #          COMMAND ${test} --allow-running-no-tests --reporter console --out=/dev/stdout
+    #          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endforeach()
 
 
