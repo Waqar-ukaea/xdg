@@ -112,8 +112,11 @@ TEMPLATE_TEST_CASE("Ray Fire on MeshMock (per-backend sections)", "[rayfire][moc
   }
 }
 
-TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]") {
-  auto rt_backend = GENERATE(RTLibrary::EMBREE, RTLibrary::GPRT);
+TEMPLATE_TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]", 
+                   Embree_Raytracer,
+                   GPRT_Raytracer) 
+{
+  constexpr auto rt_backend = TestType::value;
 
   DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
     check_ray_tracer_supported(rt_backend);

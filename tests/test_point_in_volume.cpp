@@ -10,6 +10,7 @@
 #include "mesh_mock.h"
 
 using namespace xdg;
+using namespace xdg::test;
 
 static void make_points(size_t N,
                         std::vector<Position>& points,
@@ -93,8 +94,11 @@ TEMPLATE_TEST_CASE("Point-in-volume on MeshMock", "[piv][mock]",
   }
 }
 
-TEST_CASE("Batch API Point-in-volume on MeshMock", "[piv][mock][batch]") {
-  auto rt_backend = GENERATE(RTLibrary::EMBREE, RTLibrary::GPRT);
+TEMPLATE_TEST_CASE("Batch API Point-in-volume on MeshMock", "[piv][mock][batch]", 
+                   Embree_Raytracer,
+                   GPRT_Raytracer) 
+{
+  constexpr auto rt_backend = TestType::value;
 
   DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
     check_ray_tracer_supported(rt_backend);
