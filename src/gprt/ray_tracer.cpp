@@ -8,7 +8,7 @@ GPRTRayTracer::GPRTRayTracer()
   context_ = gprtContextCreate();
   module_ = gprtModuleCreate(context_, dbl_deviceCode);
 
-  rayHitBuffers_.view.capacity = 1; // Preallocate space for 1 ray
+  rayHitBuffers_.view.capacity = 1e6; // Preallocate space for 1m rays
   rayHitBuffers_.ray = gprtDeviceBufferCreate<dblRay>(context_, rayHitBuffers_.view.capacity);
   rayHitBuffers_.hit = gprtDeviceBufferCreate<dblHit>(context_, rayHitBuffers_.view.capacity);
   rayHitBuffers_.view.rayDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
