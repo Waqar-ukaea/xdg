@@ -125,10 +125,6 @@ class GPRTRayTracer : public RayTracer {
     // Method to expose device ray and hit buffers for external population
     DeviceRayHitBuffers get_device_rayhit_buffers(const size_t N) override;
 
-    void pack_external_rays(void* origins_device_ptr, 
-                            void* directions_device_ptr,
-                            size_t num_rays) override;
-
     /**
      * @brief Allocate device buffers and invoke a callback to populate them
      *
@@ -157,7 +153,6 @@ class GPRTRayTracer : public RayTracer {
 
     GPRTMissOf<void> missProgram_; 
     GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
-    GPRTComputeOf<ExternalRayParams> packRaysProgam_; //<! A compute shader to pack raydata defined externally directly into gpu buffers (on device)
     
     // Buffers 
     gprtRayHit rayHitBuffers_;

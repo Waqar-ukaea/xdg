@@ -270,13 +270,6 @@ public:
     return {};
   }
 
-  virtual void pack_external_rays(void* origins_device_ptr,
-                                  void* directions_device_ptr,
-                                  size_t num_rays) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-    return;
-  }
-
   /**
    * @brief Allocate device ray buffers and populate them via a user-provided callback
    *

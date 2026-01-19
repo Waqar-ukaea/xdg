@@ -75,7 +75,6 @@ void GPRTRayTracer::setup_shaders()
 
   missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
   aabbPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_aabbs");
-  packRaysProgam_ = gprtComputeCreate<ExternalRayParams>(context_, module_, "pack_external_rays");
 
   // Create a "triangle" geometry type and set its closest-hit program
   trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
@@ -544,34 +543,6 @@ DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
 {
   check_rayhit_buffer_capacity(N);
   return rayHitBuffers_.view;
-}
-
-void GPRTRayTracer::pack_external_rays(void* origins_device_ptr,
-                                       void* directions_device_ptr,
-                                       size_t num_rays)
-{
-  if (num_rays == 0) return;
-
-  check_rayhit_buffer_capacity(num_rays);
-  ExternalRayParams params = {};
-  params.num_rays = num_rays;
-
-  // Workgroup setup 
-  constexpr int threadsPerGroup = 256;
-  const int neededGroups = (params.num_rays + threadsPerGroup - 1) / threadsPerGroup;
-  const int groups = std::min(neededGroups, WORKGROUP_LIMIT);
-
-  params.xdgRays = rayHitBuffers_.view.rayDevPtr; // dblRay*
-  params.origins = static_cast<double3*>(origins_device_ptr);
-  params.directions = static_cast<double3*>(directions_device_ptr);
-  params.total_threads = groups * threadsPerGroup;
-
-  gprtComputeLaunch(packRaysProgam_,
-                    { groups, 1, 1 },
-                    { threadsPerGroup, 1, 1 },
-                    params);
-  gprtComputeSynchronize(context_);
-
 }
 
 void GPRTRayTracer::populate_rays_external(size_t numRays,

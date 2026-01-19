@@ -195,10 +195,6 @@ Direction surface_normal(MeshID surface,
     return ray_tracing_interface()->get_device_rayhit_buffers(requiredCapacity);
   }
 
-  void pack_external_rays(void* origins_device_ptr,
-                          void* directions_device_ptr,
-                          size_t num_rays);
-
   void populate_rays_external(size_t numRays,
                               const RayPopulationCallback& callback)
   {

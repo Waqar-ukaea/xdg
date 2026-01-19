@@ -362,11 +362,4 @@ double XDG::measure_volume_area(MeshID volume) const
   return area;
 }
 
-void XDG::pack_external_rays(void* origins_device_ptr,
-                             void* directions_device_ptr,
-                             size_t num_rays) 
-  {
-    return ray_tracing_interface()->pack_external_rays(origins_device_ptr, directions_device_ptr, num_rays);
-  }
-
 } // namespace xdg
