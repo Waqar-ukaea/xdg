@@ -300,11 +300,11 @@ public:
    * The workflow:
    * 1. XDG allocates device memory for rays (if not already large enough)
    * 2. XDG passes device pointers to the callback
-   * 3. User's callback populates the buffers using their preferred compute API
+   * 3. User's callback populates the buffers using their preferred compute kernel/shader
    * 4. User's callback returns (XDG assumes buffers are now populated)
-   * 5. XDG proceeds with ray tracing against the populated data
+   * 5. Call xdg::ray_fire_packed() to trace the populated rays
    *
-   * This enables true zero-copy scenarios where downstream GPU code writes directly
+   * This avoids unnecessary host-device transfers by allowing users to write directly
    * to XDG's device buffers without any host-side transfers.
    *
    * @param numRays Number of rays to allocate space for

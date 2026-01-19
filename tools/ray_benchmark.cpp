@@ -186,11 +186,10 @@ int main(int argc, char** argv) {
     // ---- Random ray generation on device via callback method ----
     gen_timer.start();
 
-    /* 
-      - User creates their own GPU compute API method to populate rays and passes that to XDG
-      - In this miniapp we are using GPRT as a demonstration
-      - This callback runs inside populate_rays_external and receives XDG's device buffers
-    */
+     
+    //  - User creates their own GPU compute API method to populate rays and passes that to XDG
+    //  - In this miniapp we are using GPRT as a demonstration
+    //  - This callback runs inside populate_rays_external and receives XDG's device buffers
      auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
 
 
