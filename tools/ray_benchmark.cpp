@@ -182,30 +182,29 @@ int main(int argc, char** argv) {
 
   std::cout << "XDG initalisation Time = " << setup_timer.elapsed() << "s" << std::endl;
 
-  // --------------------------
-  // Backend-specific sections
-  // --------------------------
-
   if (rt_lib == RTLibrary::GPRT) {
-    // ---- Random ray generation on device via callback ----
+    // ---- Random ray generation on device via callback method ----
     gen_timer.start();
 
-    // Define the ray generation callback that uses GPRT
-    // This callback runs inside populate_rays_external and receives XDG's device buffers
-    auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
-      // User creates their own GPRT context and kernel here
-      // This is completely decoupled from XDG's GPRT context
-      GPRTContext context = gprtContextCreate();
-      GPRTModule module   = gprtModuleCreate(context, ray_benchmark_deviceCode);
-      auto genRandomRays  = gprtComputeCreate<GenerateRandomRayParams>(
-                              context, module, "generate_random_rays");
+    /* 
+      - User creates their own GPU compute API method to populate rays and passes that to XDG
+      - In this miniapp we are using GPRT as a demonstration
+      - This callback runs inside populate_rays_external and receives XDG's device buffers
+    */
+     auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
+
+
+      GPRTContext context = gprtContextCreate(); // Note this is the user's GPRT context, not XDG's internal one stored in GPRTRayTracer
+      GPRTModule module = gprtModuleCreate(context, ray_benchmark_deviceCode);
+      auto genRandomRays = gprtComputeCreate<GenerateRandomRayParams>(
+                           context, module, "generate_random_rays");
 
       constexpr int threadsPerGroup = 64;
       const int neededGroups = (int)((numRays + threadsPerGroup - 1) / threadsPerGroup);
       const int groups = std::min(neededGroups, WORKGROUP_LIMIT);
 
       GenerateRandomRayParams randomRayParams = {};
-      randomRayParams.rays = buffer.rayDevPtr; // XDG's device ray buffer
+      randomRayParams.rays = static_cast<dblRay*>(buffer.rayDevPtr); // Cast opaque pointer to typed dblRay*
       randomRayParams.numRays = (uint32_t)numRays;
       randomRayParams.source_radius = source_radius;
       randomRayParams.origin = { origin.x, origin.y, origin.z };
@@ -222,7 +221,7 @@ int main(int argc, char** argv) {
       gprtContextDestroy(context);
     };
 
-    // Let XDG allocate buffers and invoke the callback to populate them
+    // Let XDG internally allocate buffers and invoke the callback to populate them
     xdg->populate_rays_external(N, generateRaysCallback);
 
     gen_timer.stop();
@@ -234,8 +233,8 @@ int main(int argc, char** argv) {
     xdg->ray_fire_packed(volume, N); // ray_fire against pre-packed rays on device
     trace_timer.stop();
 
-  } else {
-    // EMBREE / CPU backend
+  } 
+  else { // EMBREE / CPU backend
 
     // ---- Random ray generation on host ----
     gen_timer.start();

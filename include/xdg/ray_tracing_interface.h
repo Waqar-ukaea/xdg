@@ -16,21 +16,42 @@
 namespace xdg
 {
 
-struct dblRay; // forward declaration
-struct dblHit; // forward declaration
+/**
+ * @brief Device ray/hit buffer descriptor
+ *
+ * This structure provides access to device-allocated ray and hit buffers
+ * in a backend-agnostic way. The buffers contain XDG's standard ray and hit
+ * data structures (dblRay and dblHit), regardless of which compute backend
+ * is being used.
+ *
+ * Key design principle:
+ * - Device pointers are opaque (void*)
+ * - The data layout is always the XDG types dblRay and dblHit
+ * - Downstream code can write to these buffers (hopefully) using any compute API
+ *
+ * For type-safe access in downstream code:
+ * - Cast rayDevPtr to (dblRay*) when using C++ or kernels
+ * - Cast hitDevPtr to (dblHit*) when reading hit results
+ */
 struct DeviceRayHitBuffers {
-  dblRay* rayDevPtr; // device pointer to ray buffers
-  dblHit* hitDevPtr; // device pointer to hit buffers
-  uint capacity = 0;
+  void* rayDevPtr;
+  void* hitDevPtr;
+  size_t capacity; // Number of rays the buffer can hold
+  size_t rayStride; // Bytes between ray elements - sizeof(dblRay)
+  size_t hitStride; // Bytes between hit elements - sizeof(dblHit)
 };
 
 /**
- * @brief Callback signature for external ray population
+ * @brief Callback alias for external ray population
  *
  * Allows downstream applications to populate ray buffers using their own compute backend
- * (GPRT, CUDA, HIP, OpenCL, etc.) without XDG needing to know which API is used.
+ * (GPRT, CUDA, OpenMP) without XDG needing to know the specifics.
  *
- * @param buffer Device ray buffer to be populated
+ * The callback receives opaque device pointers and should interpret them according to
+ * the buffer metadata (stride information). Alternatively, users can rely on the standard
+ * dblRay/dblHit layouts if they don't need custom padding/alignment.
+ *
+ * @param buffer Device ray buffer descriptor with opaque pointers and metadata
  * @param numRays Number of rays to generate/populate
  */
 using RayPopulationCallback = std::function<void(const DeviceRayHitBuffers& buffer, size_t numRays)>;

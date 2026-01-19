@@ -13,6 +13,8 @@ GPRTRayTracer::GPRTRayTracer()
   rayHitBuffers_.hit = gprtDeviceBufferCreate<dblHit>(context_, rayHitBuffers_.view.capacity);
   rayHitBuffers_.view.rayDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   rayHitBuffers_.view.hitDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+  rayHitBuffers_.view.rayStride = sizeof(dblRay);
+  rayHitBuffers_.view.hitStride = sizeof(dblHit);
 
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
 
@@ -513,7 +515,7 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
   if (N <= rayHitBuffers_.view.capacity) return; // current capacity is sufficient
 
   // Resize buffers to accommodate N rays - double the capacity or set to N, whichever is larger
-  size_t newCapacity = std::max(uint(N), rayHitBuffers_.view.capacity * 2); 
+  size_t newCapacity = std::max(N, rayHitBuffers_.view.capacity * 2); 
 
   gprtBufferResize(context_, rayHitBuffers_.ray, newCapacity, false);
   gprtBufferResize(context_, rayHitBuffers_.hit, newCapacity, false);
@@ -522,6 +524,8 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
   // Get fresh device pointers after resize
   rayHitBuffers_.view.rayDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   rayHitBuffers_.view.hitDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+  rayHitBuffers_.view.rayStride = sizeof(dblRay);
+  rayHitBuffers_.view.hitStride = sizeof(dblHit);
 
   // Since we have resized the ray buffers, we need to update the geom_data->rayIn pointers in all geometries too 
   for (auto const& [surf, geom] : surface_to_geometry_map_) {
@@ -553,8 +557,7 @@ void GPRTRayTracer::populate_rays_external(size_t numRays,
   // Ensure device buffers are large enough
   check_rayhit_buffer_capacity(numRays);
 
-  // Pass control to the user's callback with device pointers
-  // The callback will use whatever compute API it prefers to populate the buffers
+  // Use the user callback to populate the rays directly on the device
   callback(rayHitBuffers_.view, numRays);
 
   // After callback returns, we assume the ray buffer is populated and ready to trace
