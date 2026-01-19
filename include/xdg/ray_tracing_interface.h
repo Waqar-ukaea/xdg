@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 
 #include "xdg/error.h"
 #include "xdg/constants.h"
@@ -21,13 +22,18 @@ struct DeviceRayHitBuffers {
   dblRay* rayDevPtr; // device pointer to ray buffers
   dblHit* hitDevPtr; // device pointer to hit buffers
   uint capacity = 0;
-  
-  // TODO - Renable once I figure out a way to make this slang safe 
-  // bool valid() 
-  // {
-  //   return (rays != 0) && (hits != 0) && (capacity > 0);
-  // }
 };
+
+/**
+ * @brief Callback signature for external ray population
+ *
+ * Allows downstream applications to populate ray buffers using their own compute backend
+ * (GPRT, CUDA, HIP, OpenCL, etc.) without XDG needing to know which API is used.
+ *
+ * @param buffer Device ray buffer to be populated
+ * @param numRays Number of rays to generate/populate
+ */
+using RayPopulationCallback = std::function<void(const DeviceRayHitBuffers& buffer, size_t numRays)>;
 
 class RayTracer {
 public:
@@ -269,6 +275,30 @@ public:
                                   size_t num_rays) {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
     return;
+  }
+
+  /**
+   * @brief Allocate device ray buffers and populate them via a user-provided callback
+   *
+   * This method allows downstream applications to populate ray buffers using any compute
+   * backend (GPRT, CUDA, HIP, OpenCL, etc.) without coupling them to XDG's internals.
+   *
+   * The workflow:
+   * 1. XDG allocates device memory for rays (if not already large enough)
+   * 2. XDG passes device pointers to the callback
+   * 3. User's callback populates the buffers using their preferred compute API
+   * 4. User's callback returns (XDG assumes buffers are now populated)
+   * 5. XDG proceeds with ray tracing against the populated data
+   *
+   * This enables true zero-copy scenarios where downstream GPU code writes directly
+   * to XDG's device buffers without any host-side transfers.
+   *
+   * @param numRays Number of rays to allocate space for
+   * @param callback Function that will populate the ray buffer. Receives the allocated buffer and ray count.
+   */
+  virtual void populate_rays_external(size_t numRays,
+                                      const RayPopulationCallback& callback) {
+    fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
 
 protected:

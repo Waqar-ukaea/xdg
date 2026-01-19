@@ -15,7 +15,7 @@
 
 #include "argparse/argparse.hpp"
 
-// GPRT includes
+// GPRT includes - only for use in ray generation callback
 #include "gprt/gprt.h"
 #include "ray_benchmark_shared.h"
 
@@ -187,38 +187,43 @@ int main(int argc, char** argv) {
   // --------------------------
 
   if (rt_lib == RTLibrary::GPRT) {
-    // One-time GPRT compute setup (not timed as generation)
-    auto gprt_rti = std::dynamic_pointer_cast<xdg::GPRTRayTracer>(rti);
-    if (!gprt_rti)
-      fatal_error("Failed to cast RayTracer to GPRTRayTracer");
-
-    GPRTContext context = gprt_rti->context();
-    GPRTModule module   = gprtModuleCreate(context, ray_benchmark_deviceCode);
-    auto genRandomRays  = gprtComputeCreate<GenerateRandomRayParams>(
-                            context, module, "generate_random_rays");
-
-    // ---- Random ray generation on device ----
+    // ---- Random ray generation on device via callback ----
     gen_timer.start();
 
-    auto rayHitBuffers = gprt_rti->get_device_rayhit_buffers(N);
+    // Define the ray generation callback that uses GPRT
+    // This callback runs inside populate_rays_external and receives XDG's device buffers
+    auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
+      // User creates their own GPRT context and kernel here
+      // This is completely decoupled from XDG's GPRT context
+      GPRTContext context = gprtContextCreate();
+      GPRTModule module   = gprtModuleCreate(context, ray_benchmark_deviceCode);
+      auto genRandomRays  = gprtComputeCreate<GenerateRandomRayParams>(
+                              context, module, "generate_random_rays");
 
-    constexpr int threadsPerGroup = 64;
-    const int neededGroups = (int)((N + threadsPerGroup - 1) / threadsPerGroup);
-    const int groups       = std::min(neededGroups, WORKGROUP_LIMIT);
+      constexpr int threadsPerGroup = 64;
+      const int neededGroups = (int)((numRays + threadsPerGroup - 1) / threadsPerGroup);
+      const int groups = std::min(neededGroups, WORKGROUP_LIMIT);
 
-    GenerateRandomRayParams randomRayParams = {};
-    randomRayParams.rays = rayHitBuffers.rayDevPtr; // xdg::dblRay* on device
-    randomRayParams.numRays = (uint32_t)N;
-    randomRayParams.source_radius = source_radius;
-    randomRayParams.origin = { origin.x, origin.y, origin.z };
-    randomRayParams.seed = seed;
-    randomRayParams.total_threads = (uint32_t)(groups * threadsPerGroup);
+      GenerateRandomRayParams randomRayParams = {};
+      randomRayParams.rays = buffer.rayDevPtr; // XDG's device ray buffer
+      randomRayParams.numRays = (uint32_t)numRays;
+      randomRayParams.source_radius = source_radius;
+      randomRayParams.origin = { origin.x, origin.y, origin.z };
+      randomRayParams.seed = seed;
+      randomRayParams.total_threads = (uint32_t)(groups * threadsPerGroup);
 
-    gprtComputeLaunch(genRandomRays,
-                      { (uint32_t)groups, 1, 1 },
-                      { (uint32_t)threadsPerGroup, 1, 1 },
-                      randomRayParams);
-    gprtComputeSynchronize(context);
+      gprtComputeLaunch(genRandomRays,
+                        { (uint32_t)groups, 1, 1 },
+                        { (uint32_t)threadsPerGroup, 1, 1 },
+                        randomRayParams);
+      gprtComputeSynchronize(context);
+
+      // Cleanup the user's context (not XDG's context)
+      gprtContextDestroy(context);
+    };
+
+    // Let XDG allocate buffers and invoke the callback to populate them
+    xdg->populate_rays_external(N, generateRaysCallback);
 
     gen_timer.stop();
     std::cout << "Random ray generation (via external compute shader) Time = "

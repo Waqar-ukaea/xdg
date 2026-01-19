@@ -129,6 +129,15 @@ class GPRTRayTracer : public RayTracer {
                             void* directions_device_ptr,
                             size_t num_rays) override;
 
+    /**
+     * @brief Allocate device buffers and invoke a callback to populate them
+     *
+     * This method enables downstream applications to populate ray buffers using
+     * any compute API (GPRT, CUDA, HIP, etc.) without XDG needing to know the details.
+     */
+    void populate_rays_external(size_t numRays,
+                                const RayPopulationCallback& callback) override;
+
     GPRTContext context()
     {
       return context_;

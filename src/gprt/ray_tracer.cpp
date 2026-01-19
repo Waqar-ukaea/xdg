@@ -574,6 +574,22 @@ void GPRTRayTracer::pack_external_rays(void* origins_device_ptr,
 
 }
 
+void GPRTRayTracer::populate_rays_external(size_t numRays,
+                                           const RayPopulationCallback& callback)
+{
+  if (numRays == 0) return;
+
+  // Ensure device buffers are large enough
+  check_rayhit_buffer_capacity(numRays);
+
+  // Pass control to the user's callback with device pointers
+  // The callback will use whatever compute API it prefers to populate the buffers
+  callback(rayHitBuffers_.view, numRays);
+
+  // After callback returns, we assume the ray buffer is populated and ready to trace
+  // Note: The callback is responsible for synchronization if using an async API
+}
 
 } // namespace xdg
+
 

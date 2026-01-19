@@ -199,6 +199,12 @@ Direction surface_normal(MeshID surface,
                           void* directions_device_ptr,
                           size_t num_rays);
 
+  void populate_rays_external(size_t numRays,
+                              const RayPopulationCallback& callback)
+  {
+    return ray_tracing_interface()->populate_rays_external(numRays, callback);
+  }
+
 // Accessors
   const std::shared_ptr<RayTracer>& ray_tracing_interface() const {
     return ray_tracing_interface_;
