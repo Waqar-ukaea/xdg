@@ -267,13 +267,13 @@ XDG::ray_fire(MeshID volume,
 }
 
 void 
-XDG::ray_fire_packed(MeshID volume,
-                     const size_t num_rays,
-                     const double dist_limit,
-                     HitOrientation orientation) 
+XDG::ray_fire_prepared(MeshID volume,
+                       const size_t num_rays,
+                       const double dist_limit,
+                       HitOrientation orientation) 
 {
   TreeID tree = volume_to_surface_tree_map_.at(volume);
-  return ray_tracing_interface()->ray_fire_packed(tree, num_rays, dist_limit, orientation);
+  return ray_tracing_interface()->ray_fire_prepared(tree, num_rays, dist_limit, orientation);
 }
 
 std::pair<double, MeshID> XDG::closest(MeshID volume,

@@ -103,10 +103,10 @@ class GPRTRayTracer : public RayTracer {
                   HitOrientation orientation = HitOrientation::EXITING,
                   std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
-    void ray_fire_packed(TreeID tree,
-                         const size_t num_rays,
-                         const double dist_limit = INFTY,
-                         HitOrientation orientation = HitOrientation::EXITING) override;
+    void ray_fire_prepared(TreeID tree,
+                           const size_t num_rays,
+                           const double dist_limit = INFTY,
+                           HitOrientation orientation = HitOrientation::EXITING) override;
 
     std::pair<double, MeshID> closest(TreeID scene,
                                       const Position& origin) override {};

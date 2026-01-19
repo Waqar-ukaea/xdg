@@ -472,10 +472,10 @@ void GPRTRayTracer::ray_fire(TreeID tree,
 }
 
 void 
-GPRTRayTracer::ray_fire_packed(TreeID tree,
-                               const size_t num_rays,
-                               const double dist_limit,
-                               HitOrientation orientation)
+GPRTRayTracer::ray_fire_prepared(TreeID tree,
+                                  const size_t num_rays,
+                                  const double dist_limit,
+                                  HitOrientation orientation)
 {
   if (num_rays == 0) return; // no work to do. Early exit
 

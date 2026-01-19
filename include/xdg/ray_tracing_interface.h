@@ -266,7 +266,7 @@ public:
    * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
    * @return Void. Outputs stored in dblHit buffer on device
    */  
-  virtual void ray_fire_packed(TreeID tree,
+  virtual void ray_fire_prepared(TreeID tree,
                                const size_t num_rays,
                                const double dist_limit = INFTY,
                                HitOrientation orientation = HitOrientation::EXITING) 
@@ -302,7 +302,7 @@ public:
    * 2. XDG passes device pointers to the callback
    * 3. User's callback populates the buffers using their preferred compute kernel/shader
    * 4. User's callback returns (XDG assumes buffers are now populated)
-   * 5. Call xdg::ray_fire_packed() to trace the populated rays
+   * 5. Call xdg::ray_fire_prepared() to trace the populated rays
    *
    * This avoids unnecessary host-device transfers by allowing users to write directly
    * to XDG's device buffers without any host-side transfers.
