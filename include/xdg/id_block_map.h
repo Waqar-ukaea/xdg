@@ -16,32 +16,32 @@
 namespace xdg {
 
 template <typename ID, typename Index = MeshIndex>
-struct Block {
+struct IDBlock {
     ID    id_start;   // First ID in this contiguous block
     Index idx_start;  // Element index corresponding to id_start
     Index count;      // Number of IDs in this block
 };
 
 template <typename ID, typename Index = MeshIndex>
-class BlockMapping {
+class IDBlockMapping {
     static_assert(std::is_integral_v<ID>,    "Id must be an integral type");
     static_assert(std::is_integral_v<Index>, "Index must be an integral type");
 
 public:
-    BlockMapping() = default;
+    IDBlockMapping() = default;
 
-    //! \brief Construct BlockMapping from a vector of element/vertex IDs
+    //! \brief Construct IDBlockMapping from a vector of element/vertex IDs
     //! \param ids vector of IDs in iteration order for the mesh
     //! \note IDs are expected to be non-negative and monotoincally increasing,
     //!       but may contain gaps
     template <typename T = std::vector<ID>>
-    BlockMapping(const T& ids)
+    IDBlockMapping(const T& ids)
     {
       if (ids.empty()) return;
 
       // check that IDs are sorted
       if (!std::is_sorted(ids.begin(), ids.end())) {
-        fatal_error("BlockMapping constructor requires sorted IDs");
+        fatal_error("IDBlockMapping constructor requires sorted IDs");
       }
 
       size_t n = ids.size();
@@ -51,7 +51,7 @@ public:
       for (size_t i = 1; i <= n; ++i) {
         if (i == n || ids[i] != ids[i - 1] + 1) {
           // End of a contiguous block
-          Block<ID, Index> block;
+          IDBlock<ID, Index> block;
           block.id_start  = ids[block_start];
           block.idx_start = current_idx;
           block.count     = static_cast<Index>(i - block_start);
@@ -76,7 +76,7 @@ public:
         // determine which block this ID falls into with binary search
         it = std::upper_bound(
             blocks_.begin(), blocks_.end(), id,
-            [](ID value, const Block<ID, Index>& b) {
+            [](ID value, const IDBlock<ID, Index>& b) {
                 return value < b.id_start;
             });
         --it; // last block with id_start <= id
@@ -106,7 +106,7 @@ public:
         // determine which block this index falls into with binary search
         it = std::upper_bound(
             blocks_.begin(), blocks_.end(), idx,
-            [&](Index value, const Block<ID, Index>& b) {
+            [&](Index value, const IDBlock<ID, Index>& b) {
                 return value < b.idx_start;
             });
         --it;
@@ -117,10 +117,10 @@ public:
     }
 
     // Expose blocks if needed for iteration/inspection
-    const std::vector<Block<ID, Index>>& blocks() const { return blocks_; }
+    const std::vector<IDBlock<ID, Index>>& blocks() const { return blocks_; }
 
 private:
-    std::vector<Block<ID, Index>> blocks_;       // sorted by id_start
+    std::vector<IDBlock<ID, Index>> blocks_;       // sorted by id_start
 };
 
 } // namespace xdg

@@ -191,7 +191,7 @@ private:
     int element_stride {-1}; //!< Number of vertices used by each element
     std::vector<std::pair<EntityHandle, size_t>> first_elements; //!< Pairs of first element and length pairs for contiguous blocks of memory
     std::vector<const EntityHandle*> vconn; //!< Storage array(s) for the connectivity array
-    BlockMapping<EntityHandle> entity_index_map_; //!< Map from entity handle to index
+    IDBlockMapping<EntityHandle> entity_index_map_; //!< Map from entity handle to index
 
     void setup(Interface * mbi) {
       ErrorCode rval;
@@ -201,7 +201,7 @@ private:
       rval = mbi->get_entities_by_type(0, entity_type, entity_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements for the given entity type");
       num_entities = entity_range.size();
-      entity_index_map_ = BlockMapping<EntityHandle>(entity_range);
+      entity_index_map_ = IDBlockMapping<EntityHandle>(entity_range);
 
       // only supporting triangle elements for now
       if (!entity_range.all_of_type(entity_type)) { throw std::runtime_error("Not all 2D elements are triangles"); }
@@ -259,7 +259,7 @@ private:
       rval = mbi->get_entities_by_dimension(0, 0, vertex_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements of dimension 0 (vertices)");
       num_vertices = vertex_range.size();
-      vertex_index_map_ = BlockMapping<EntityHandle>(vertex_range);
+      vertex_index_map_ = IDBlockMapping<EntityHandle>(vertex_range);
 
       moab::Range::iterator verts_it = vertex_range.begin();
       while (verts_it != vertex_range.end()) {
@@ -312,7 +312,7 @@ private:
     std::vector<const double*> ty; //!< Storage array(s) for vertex y coordinates
     std::vector<const double*> tz; //!< Storage array(s) for vertex z coordinates
     std::vector<std::pair<EntityHandle, size_t>> first_vertices; //!< Pairs of first vertex and length pairs for contiguous blocks of memory
-    BlockMapping<EntityHandle> vertex_index_map_; //!< Map from vertex handle to index
+    IDBlockMapping<EntityHandle> vertex_index_map_; //!< Map from vertex handle to index
   };
 
   ConnectivityData face_data_;

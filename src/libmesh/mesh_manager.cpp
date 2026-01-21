@@ -169,7 +169,7 @@ void LibMeshManager::map_id_spaces() {
   for (const auto *elem : mesh()->active_element_ptr_range()) {
     volume_element_ids.push_back(elem->id());
   }
-  volume_element_id_map_ = BlockMapping<MeshID>(volume_element_ids);
+  volume_element_id_map_ = IDBlockMapping<MeshID>(volume_element_ids);
 
   // build the BlockMapping for vertex IDs
   std::vector<MeshID> vertex_ids;
@@ -177,7 +177,7 @@ void LibMeshManager::map_id_spaces() {
   for (const auto *node : mesh()->node_ptr_range()) {
     vertex_ids.push_back(node->id());
   }
-  vertex_id_map_ = BlockMapping<MeshID>(vertex_ids);
+  vertex_id_map_ = IDBlockMapping<MeshID>(vertex_ids);
 }
 
 void LibMeshManager::discover_surface_elements() {
@@ -209,7 +209,7 @@ void LibMeshManager::discover_surface_elements() {
   }
 
   // build the BlockMapping for volume elements
-  volume_element_id_map_ = BlockMapping<MeshID>(volume_element_ids);
+  volume_element_id_map_ = IDBlockMapping<MeshID>(volume_element_ids);
 }
 
 void LibMeshManager::merge_sidesets_into_interfaces() {

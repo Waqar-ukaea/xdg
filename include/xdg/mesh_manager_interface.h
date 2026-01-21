@@ -82,7 +82,6 @@ public:
   std::vector<MeshID> get_volume_faces(MeshID volume) const;
 
   virtual std::vector<MeshID> get_surface_faces(MeshID surface) const = 0;
-
   // TODO: can we accomplish this without allocating memory?
   virtual std::vector<Vertex> element_vertices(MeshID element) const = 0;
 

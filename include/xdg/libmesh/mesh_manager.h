@@ -353,10 +353,10 @@ public:
   std::unordered_map<MeshID, std::pair<MeshID, MeshID>> surface_senses_;
 
   //! Block ID mapping from element IDs to contiguous index space
-  BlockMapping<MeshID> volume_element_id_map_;
+  IDBlockMapping<MeshID> volume_element_id_map_;
 
   //! Block ID mapping from vertex IDs to contiguous index space
-  BlockMapping<MeshID> vertex_id_map_;
+  IDBlockMapping<MeshID> vertex_id_map_;
 
   int32_t num_elements_ {-1};
 
