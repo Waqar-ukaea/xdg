@@ -4,10 +4,12 @@ namespace xdg {
 
 GPRTRayTracer::GPRTRayTracer()
 {
+  
   gprtRequestRayTypeCount(numRayTypes_); // Set the number of shaders which can be set to the same geometry
   context_ = gprtContextCreate();
   module_ = gprtModuleCreate(context_, dbl_deviceCode);
 
+  // Buffer setup
   rayHitBuffers_.view.capacity = 1e6; // Preallocate space for 1m rays
   rayHitBuffers_.ray = gprtDeviceBufferCreate<dblRay>(context_, rayHitBuffers_.view.capacity);
   rayHitBuffers_.hit = gprtDeviceBufferCreate<dblHit>(context_, rayHitBuffers_.view.capacity);
@@ -15,6 +17,8 @@ GPRTRayTracer::GPRTRayTracer()
   rayHitBuffers_.view.hitDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
 
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
+
+  tlas_handle_buffer_ = gprtDeviceBufferCreate<SurfaceAccelerationStructure>(context_); // initialise buffer of size 1
 
   setup_shaders();
 
@@ -31,6 +35,8 @@ GPRTRayTracer::GPRTRayTracer()
 
   // Set up build parameters for acceleration structures
   buildParams_.buildMode = GPRT_BUILD_MODE_FAST_BUILD_NO_UPDATE;
+
+
 }
 
 GPRTRayTracer::~GPRTRayTracer()
@@ -45,11 +51,6 @@ GPRTRayTracer::~GPRTRayTracer()
     gprtAccelDestroy(accel);
   }
 
-  // Destroy BLAS structures
-  for (const auto& blas : blas_handles_) {
-    gprtAccelDestroy(blas);
-  }
-
   // Destroy Geoms and Types
   for (const auto& [surf, geom] : surface_to_geometry_map_) {
     gprtGeomDestroy(geom);
@@ -60,6 +61,7 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtBufferDestroy(rayHitBuffers_.ray);
   gprtBufferDestroy(rayHitBuffers_.hit);
   gprtBufferDestroy(excludePrimitivesBuffer_);
+  gprtBufferDestroy(tlas_handle_buffer_);
 
   // Destroy module and context
   gprtModuleDestroy(module_);
@@ -88,6 +90,18 @@ void GPRTRayTracer::init()
   // Build the shader binding table (SBT) after all shader programs and acceleration structures are set up
   gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
   // Note that should we need to update any shaders or acceleration structures, we must rebuild the SBT  
+
+  // Build Device-side TLAS map
+  gprtBufferResize<SurfaceAccelerationStructure>(context_, tlas_handle_buffer_, tlas_handles_.size(), false);
+  gprtBufferMap(tlas_handle_buffer_);
+    std::copy(tlas_handles_.begin(), tlas_handles_.end(), gprtBufferGetHostPointer(tlas_handle_buffer_));
+  gprtBufferUnmap(tlas_handle_buffer_);
+
+  // Bind to raygen data
+  for (auto type : {RayGenType::RAY_FIRE, RayGenType::POINT_IN_VOLUME}) {
+    auto* raygendata = gprtRayGenGetParameters(rayGenPrograms_.at(type));
+    raygendata->meshid_to_accel_address = gprtBufferGetDevicePointer(tlas_handle_buffer_);
+  }
 }
 
 std::pair<TreeID,TreeID>
@@ -205,8 +219,8 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   GPRTAccel volume_tlas = gprtInstanceAccelCreate(context_, surfaceBlasInstances.size(), instanceBuffer);
   gprtAccelBuild(context_, volume_tlas, buildParams_);
   surface_volume_tree_to_accel_map[tree] = volume_tlas;
-  
-  return tree;
+  tlas_handles_.push_back(gprtAccelGetDeviceAddress(volume_tlas)); // Store TLAS handle for population of device side MeshID->Accel map
+  return tree;  
 }
 
 ElementTreeID
@@ -471,24 +485,20 @@ void GPRTRayTracer::ray_fire(TreeID tree,
 }
 
 void 
-GPRTRayTracer::ray_fire_packed(TreeID tree,
-                               const size_t num_rays,
-                               const double dist_limit,
-                               HitOrientation orientation)
+GPRTRayTracer::ray_fire_prepared(const size_t num_rays,
+                                 const double dist_limit,
+                                 HitOrientation orientation)
 {
   if (num_rays == 0) return; // no work to do. Early exit
 
   check_rayhit_buffer_capacity(num_rays); 
 
-  GPRTAccel volume = surface_volume_tree_to_accel_map.at(tree);
   auto rayGen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
 
   dblRayFirePushConstants pushConstants;
-  pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
   pushConstants.tMax = dist_limit;
   pushConstants.tMin = 0.0;
   pushConstants.hitOrientation = orientation; // Set orientation for the ray
-  pushConstants.volume_tree = tree; // Set the TreeID of the volume being queried
   
   gprtRayGenLaunch1D(context_, rayGen, num_rays, pushConstants);
   gprtGraphicsSynchronize(context_);

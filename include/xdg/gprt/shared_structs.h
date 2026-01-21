@@ -33,6 +33,7 @@ struct DPTriangleGeomData {
 struct dblRayGenData {
   xdg::dblRay *ray;
   xdg::dblHit *hit;
+  SurfaceAccelerationStructure* meshid_to_accel_address; // MeshID->TLAS address table
 };
 
 /* A small structure of constants that can change every frame without rebuilding the

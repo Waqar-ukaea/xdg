@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
 
     // ---- Ray tracing on device ----
     trace_timer.start();
-    xdg->ray_fire_packed(volume, N); // ray_fire against pre-packed rays on device
+    xdg->ray_fire_prepared(N); // ray_fire against pre-packed rays on device
     trace_timer.stop();
 
   } else {

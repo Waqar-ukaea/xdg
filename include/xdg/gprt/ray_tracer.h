@@ -103,10 +103,9 @@ class GPRTRayTracer : public RayTracer {
                   HitOrientation orientation = HitOrientation::EXITING,
                   std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
-    void ray_fire_packed(TreeID tree,
-                         const size_t num_rays,
-                         const double dist_limit = INFTY,
-                         HitOrientation orientation = HitOrientation::EXITING) override;
+    void ray_fire_prepared(const size_t num_rays,
+                           const double dist_limit = INFTY,
+                           HitOrientation orientation = HitOrientation::EXITING) override;
 
     std::pair<double, MeshID> closest(TreeID scene,
                                       const Position& origin) override {};
@@ -166,8 +165,10 @@ class GPRTRayTracer : public RayTracer {
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
-    std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
-
+    
+    std::vector<SurfaceAccelerationStructure> tlas_handles_; // Store TLAS handles so that they can be explicitly referenced in destructor
+    GPRTBufferOf<SurfaceAccelerationStructure> tlas_handle_buffer_; // Device buffer storing TLAS handles for device side MeshID->Accel map
+    
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};
     GPRTAccel global_element_accel_ {nullptr}; 

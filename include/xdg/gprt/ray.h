@@ -10,6 +10,7 @@ struct dblRay
 {
   double3 origin;
   double3 direction;
+  SurfaceAccelerationStructure surface_accel; // TLAS we are tracing against
   int32_t* exclude_primitives; // Optional for excluding primitives
   int32_t exclude_count;           // Number of excluded primitives
 };

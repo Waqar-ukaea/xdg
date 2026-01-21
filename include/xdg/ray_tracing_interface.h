@@ -239,10 +239,9 @@ public:
    * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
    * @return Void. Outputs stored in dblHit buffer on device
    */  
-  virtual void ray_fire_packed(TreeID tree,
-                               const size_t num_rays,
-                               const double dist_limit = INFTY,
-                               HitOrientation orientation = HitOrientation::EXITING) 
+  virtual void ray_fire_prepared(const size_t num_rays,
+                                 const double dist_limit = INFTY,
+                                 HitOrientation orientation = HitOrientation::EXITING) 
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }  
