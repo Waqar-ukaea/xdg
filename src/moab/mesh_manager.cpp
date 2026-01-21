@@ -38,22 +38,25 @@ void MOABMeshManager::init() {
   this->mb_direct()->setup();
 
   // populate ID to index mappings
-  std::vector<MeshID> volume_element_ids;
-  for (auto element_handle : this->mb_direct()->element_data().entity_range) {
-    MeshID element_id = this->moab_interface()->id_from_handle(element_handle);
-    volume_element_ids.push_back(element_id);
-  }
-  volume_element_id_map_ = IDBlockMapping<MeshID>(volume_element_ids);
-  volume_element_ids.clear();
 
-  std::vector<MeshID> vertex_ids;
-  for (auto vertex_handle : this->mb_direct()->vertex_data().vertex_range) {
-    MeshID vertex_id = this->moab_interface()->id_from_handle(vertex_handle);
-    vertex_ids.push_back(vertex_id);
-  }
-  vertex_id_map_ = IDBlockMapping<MeshID>(vertex_ids);
-  vertex_ids.clear();
+  // define a function to convert from a handle to an ID
+  // this is used to convert from EntityHandle to MeshID in the BlockMapping
+  // this allows us to construct the ID mapping directly from a MOAB Range object
+  // instead of having to first create a vector of IDs
+  std::function<MeshID(const moab::EntityHandle&)> moab_handle_to_id =
+      [this](const moab::EntityHandle& handle) {
+        return this->moab_interface()->id_from_handle(handle);
+      };
 
+  volume_element_id_map_ = IDBlockMapping<MeshID>(
+      this->mb_direct()->element_data().entity_range,
+      moab_handle_to_id
+  );
+
+  vertex_id_map_ = IDBlockMapping<MeshID>(
+    this->mb_direct()->vertex_data().vertex_range,
+    moab_handle_to_id
+  );
 
   // ensure all of the necessary tag handles exist
   this->setup_tags();

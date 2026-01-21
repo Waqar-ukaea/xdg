@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include <numeric>
 #include <optional>
 #include <cstdint>
@@ -32,16 +33,19 @@ public:
 
     //! \brief Construct IDBlockMapping from a vector of element/vertex IDs
     //! \param ids vector of IDs in iteration order for the mesh
+    //! \param converter Optional function to convert from input type to ID type,
+    //!                  useful in the case where the mesh-native input identifiers
+    //!                  differ from the desired ID type (typically MeshID)
     //! \note IDs are expected to be non-negative and monotoincally increasing,
     //!       but may contain gaps
-    template <typename T = std::vector<ID>>
-    IDBlockMapping(const T& ids)
+    template<typename I = ID, typename T = std::vector<I>, typename Func = std::function<ID(const I&)>>
+    IDBlockMapping(const T& ids, Func converter = [](const ID& x) { return x; })
     {
-      if (ids.empty()) return;
+      if (ids.size() == 0) return;
 
       // check that IDs are sorted
       if (!std::is_sorted(ids.begin(), ids.end())) {
-        fatal_error("IDBlockMapping constructor requires sorted IDs");
+      fatal_error("IDBlockMapping constructor requires sorted IDs");
       }
 
       size_t n = ids.size();
@@ -49,10 +53,10 @@ public:
       Index current_idx = 0;
 
       for (size_t i = 1; i <= n; ++i) {
-        if (i == n || ids[i] != ids[i - 1] + 1) {
+        if (i == n || converter(ids[i]) != converter(ids[i-1]) + 1) {
           // End of a contiguous block
           IDBlock<ID, Index> block;
-          block.id_start  = ids[block_start];
+          block.id_start  = converter(ids[block_start]);
           block.idx_start = current_idx;
           block.count     = static_cast<Index>(i - block_start);
           blocks_.push_back(block);
