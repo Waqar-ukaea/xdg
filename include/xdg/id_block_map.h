@@ -34,7 +34,8 @@ public:
     //! \param ids vector of IDs in iteration order for the mesh
     //! \note IDs are expected to be non-negative and monotoincally increasing,
     //!       but may contain gaps
-    BlockMapping(const std::vector<ID>& ids)
+    template <typename T = std::vector<ID>>
+    BlockMapping(const T& ids)
     {
       if (ids.empty()) return;
 
