@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "xdg/constants.h"
-#include "xdg/id_block_map.h"
 #include "xdg/element_face_accessor.h"
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/error.h"
@@ -130,22 +129,6 @@ public:
   MeshID adjacent_element(MeshID element, int face) const override;
 
   double element_volume(MeshID element) const override;
-
-  inline MeshID element_id(size_t element_idx) const override {
-    return volume_element_id_map_.index_to_id(element_idx);
-  }
-
-  inline int element_index(MeshID element) const override {
-    return volume_element_id_map_.id_to_index(element);
-  }
-
-  inline MeshID vertex_id(size_t vertex_idx) const {
-    return vertex_id_map_.index_to_id(vertex_idx);
-  }
-
-  inline int vertex_index(MeshID vertex) const {
-    return vertex_id_map_.id_to_index(vertex);
-  }
 
   MeshID create_volume() override;
 
@@ -351,12 +334,6 @@ public:
   //! Mapping of surfaces to the volumes on either side. Volumes are ordered
   //! based on their sense with respect to the surface triangles
   std::unordered_map<MeshID, std::pair<MeshID, MeshID>> surface_senses_;
-
-  //! Block ID mapping from element IDs to contiguous index space
-  IDBlockMapping<MeshID> volume_element_id_map_;
-
-  //! Block ID mapping from vertex IDs to contiguous index space
-  IDBlockMapping<MeshID> vertex_id_map_;
 
   int32_t num_elements_ {-1};
 

@@ -47,17 +47,6 @@ public:
     return true;
   }
 
-  //! \brief Determine the index of an element in the managed data
-  inline size_t element_index(EntityHandle element) {
-    return element_data_.entity_index_map_.id_to_index(element);
-  }
-
-  //! \brief Determine the element handle of an element based on its index in
-  //! the managed data
-  inline EntityHandle element_handle(size_t index) {
-    return element_data_.entity_index_map_.index_to_id(index);
-  }
-
   //! \brief Get the coordinates of a triangle as XDG Vertices
   inline std::array<xdg::Vertex, 3> get_mb_coords(const EntityHandle& tri) {
     auto [i0, i1, i2] = face_data_.get_connectivity_indices<3>(tri);
@@ -79,14 +68,6 @@ public:
     vertex_data_.set_coords(i2, vertices[2]);
     vertex_data_.set_coords(i3, vertices[3]);
     return vertices;
-  }
-
-  int vertex_index(EntityHandle vertex) {
-    return vertex_data_.vertex_index_map_.id_to_index(vertex);
-  }
-
-  EntityHandle vertex_handle(int vertex_index) {
-    return vertex_data_.vertex_index_map_.index_to_id(vertex_index);
   }
 
   //! \brief Get the adjacent element
@@ -191,17 +172,16 @@ private:
     int element_stride {-1}; //!< Number of vertices used by each element
     std::vector<std::pair<EntityHandle, size_t>> first_elements; //!< Pairs of first element and length pairs for contiguous blocks of memory
     std::vector<const EntityHandle*> vconn; //!< Storage array(s) for the connectivity array
-    IDBlockMapping<EntityHandle> entity_index_map_; //!< Map from entity handle to index
+    moab::Range entity_range; //!< Range of entities managed here
 
     void setup(Interface * mbi) {
       ErrorCode rval;
 
       // setup face connectivity data
-      moab::Range entity_range;
+
       rval = mbi->get_entities_by_type(0, entity_type, entity_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements for the given entity type");
       num_entities = entity_range.size();
-      entity_index_map_ = IDBlockMapping<EntityHandle>(entity_range);
 
       // only supporting triangle elements for now
       if (!entity_range.all_of_type(entity_type)) { throw std::runtime_error("Not all 2D elements are triangles"); }
@@ -255,11 +235,9 @@ private:
     void setup(Interface* mbi) {
       ErrorCode rval;
       // setup vertices
-      moab::Range vertex_range;
       rval = mbi->get_entities_by_dimension(0, 0, vertex_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements of dimension 0 (vertices)");
       num_vertices = vertex_range.size();
-      vertex_index_map_ = IDBlockMapping<EntityHandle>(vertex_range);
 
       moab::Range::iterator verts_it = vertex_range.begin();
       while (verts_it != vertex_range.end()) {
@@ -312,13 +290,18 @@ private:
     std::vector<const double*> ty; //!< Storage array(s) for vertex y coordinates
     std::vector<const double*> tz; //!< Storage array(s) for vertex z coordinates
     std::vector<std::pair<EntityHandle, size_t>> first_vertices; //!< Pairs of first vertex and length pairs for contiguous blocks of memory
-    IDBlockMapping<EntityHandle> vertex_index_map_; //!< Map from vertex handle to index
+    moab::Range vertex_range; //!< Range of vertices managed here
   };
 
   ConnectivityData face_data_;
   ConnectivityData element_data_;
   AdjacencyData element_adjacency_data_;
   VertexData vertex_data_;
+
+  public:
+    const ConnectivityData& element_data() const { return element_data_; }
+
+    const VertexData& vertex_data() const {return vertex_data_; }
 };
 
 } // namespace xdg

@@ -37,6 +37,24 @@ void MOABMeshManager::init() {
   // initialize the direct access manager
   this->mb_direct()->setup();
 
+  // populate ID to index mappings
+  std::vector<MeshID> volume_element_ids;
+  for (auto element_handle : this->mb_direct()->element_data().entity_range) {
+    MeshID element_id = this->moab_interface()->id_from_handle(element_handle);
+    volume_element_ids.push_back(element_id);
+  }
+  volume_element_id_map_ = IDBlockMapping<MeshID>(volume_element_ids);
+  volume_element_ids.clear();
+
+  std::vector<MeshID> vertex_ids;
+  for (auto vertex_handle : this->mb_direct()->vertex_data().vertex_range) {
+    MeshID vertex_id = this->moab_interface()->id_from_handle(vertex_handle);
+    vertex_ids.push_back(vertex_id);
+  }
+  vertex_id_map_ = IDBlockMapping<MeshID>(vertex_ids);
+  vertex_ids.clear();
+
+
   // ensure all of the necessary tag handles exist
   this->setup_tags();
 

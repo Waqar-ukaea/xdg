@@ -7,6 +7,7 @@
 
 #include "xdg/bbox.h"
 #include "xdg/constants.h"
+#include "xdg/id_block_map.h"
 #include "xdg/vec3da.h"
 
 namespace xdg {
@@ -90,10 +91,12 @@ public:
   virtual std::vector<Vertex> get_surface_vertices(MeshID surface) const = 0;
 
   //! \brief Return a vertex ID given its index in the mesh
-  virtual MeshID vertex_id(size_t vertex_idx) const = 0;
+  virtual MeshID vertex_id(size_t vertex_idx) const
+  { return vertex_id_map_.index_to_id(vertex_idx); }
 
   //! \brief Return the index of a vertex given its ID in the mesh
-  virtual int vertex_index(MeshID vertex) const = 0;
+  virtual int vertex_index(MeshID vertex) const
+  { return vertex_id_map_.id_to_index(vertex); }
 
   // Return a pair of {vertices, connectivity} for a given surface in the mesh
   virtual std::pair<std::vector<Vertex>, std::vector<int>> get_surface_mesh(MeshID surface) const = 0;
@@ -103,12 +106,14 @@ public:
   //! \brief Convert an element's ID to its index in the mesh
   //! \param element_idx The index of the element in the mesh
   //! \return The element ID
-  virtual MeshID element_id(size_t element_idx) const = 0;
+  virtual MeshID element_id(size_t element_idx) const
+  { return volume_element_id_map_.index_to_id(element_idx); }
 
   //! \brief Convert an element's index in the mesh to its ID
   //! \param element The element ID
   //! \return The index of the element in the mesh
-  virtual int element_index(MeshID element) const = 0;
+  virtual int element_index(MeshID element) const
+  { return volume_element_id_map_.id_to_index(element); }
 
   //! \brief Get the adjacent element across a given face
   //! \param element The current element ID
@@ -182,9 +187,14 @@ protected:
   std::vector<MeshID> volumes_;
   std::vector<MeshID> surfaces_;
 
+  //! Block ID mapping from element IDs to contiguous index space
+  IDBlockMapping<MeshID> volume_element_id_map_;
+
+  //! Block ID mapping from vertex IDs to contiguous index space
+  IDBlockMapping<MeshID> vertex_id_map_;
+
   // TODO: attempt to remove this attribute
   MeshID implicit_complement_ {ID_NONE};
-
 };
 
 } // namespace xdg
