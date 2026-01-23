@@ -30,7 +30,18 @@ void generate_random_rays(uint3 DispatchThreadID: SV_DispatchThreadID,
     params.rays[idx].direction = dir;
     params.rays[idx].exclude_primitives = nullptr;
     params.rays[idx].exclude_count = 0;
+    params.rays[idx].enabled = params.enabled;
+    params.rays[idx].volume_mesh_id = params.volume_mesh_id;
   }
+}
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void debug_read_tlas(uint3 DispatchThreadID: SV_DispatchThreadID,
+                     uniform DebugReadTLASParams params)
+{
+  if (DispatchThreadID.x > 0) return;
+  params.out[0] = params.table[params.index];
 }
 
 // Helpers 

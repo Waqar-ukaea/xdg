@@ -10,10 +10,12 @@ struct dblRay
 {
   double3 origin;
   double3 direction;
+  int volume_mesh_id; // MeshID of the volume this ray will be traced against
   uint enabled; // Flag to indicate if the ray is active
   int32_t* exclude_primitives; // Optional for excluding primitives
   int32_t exclude_count; // Number of excluded primitives
 };
+
 
 struct dblHit 
 {

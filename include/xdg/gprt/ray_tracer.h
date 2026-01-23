@@ -139,6 +139,16 @@ class GPRTRayTracer : public RayTracer {
       return context_;
     }
 
+    SurfaceAccelerationStructure* tlas_handle_device_ptr() const
+    {
+      return gprtBufferGetDevicePointer(tlas_handle_buffer_);
+    }
+
+    size_t tlas_handle_count() const
+    {
+      return tlas_handles_.size();
+    }
+
   private:
 
     // GPRT objects 
@@ -170,7 +180,12 @@ class GPRTRayTracer : public RayTracer {
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
-    std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
+    std::unordered_map<SurfaceTreeID, MeshID> surface_tree_to_volume_map_;
+    std::vector<SurfaceAccelerationStructure> tlas_handles_; // Host side storage of TLAS device addresses
+    GPRTBufferOf<SurfaceAccelerationStructure> tlas_handle_buffer_; // Device buffer for TLAS addresses
+    bool initialized_ {false}; // flag to indicate if init() has been called
+
+    void update_tlas_table_();
 
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};

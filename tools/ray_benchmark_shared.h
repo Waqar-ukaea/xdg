@@ -3,10 +3,18 @@
 #include "../include/xdg/gprt/ray.h"
 
 struct GenerateRandomRayParams {
-    xdg::dblRay* rays; // pointer to ray data buffer
-    uint numRays; // number of rays to be generated
-    double3 origin; // single origin provided for benchmark case
-    uint seed; // seed for random direction generation
+    xdg::dblRay* rays;
+    uint numRays;
+    double3 origin;
+    uint seed;
     uint total_threads;
-    double source_radius; // 0.0 = point volume, >0.0 = spherical cloud
+    double source_radius;
+    int volume_mesh_id;
+    uint enabled;
+};
+
+struct DebugReadTLASParams {
+    SurfaceAccelerationStructure* table;
+    uint index;
+    SurfaceAccelerationStructure* out;
 };

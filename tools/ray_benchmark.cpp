@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
 
   std::cout << "XDG initalisation Time = " << setup_timer.elapsed() << "s" << std::endl;
 
+  std::shared_ptr<GPRTRayTracer> gprt_rt;
   if (rt_lib == RTLibrary::GPRT) {
     // ---- Random ray generation on device via callback method ----
     gen_timer.start();
@@ -190,10 +191,13 @@ int main(int argc, char** argv) {
     //  - User creates their own GPU compute API method to populate rays and passes that to XDG
     //  - In this miniapp we are using GPRT as a demonstration
     //  - This callback runs inside populate_rays_external and receives XDG's device buffers
-     auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
+    gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(xdg->ray_tracing_interface());
+    if (!gprt_rt) {
+      fatal_error("GPRT backend requested but ray tracing interface is not GPRTRayTracer");
+    }
 
-
-      GPRTContext context = gprtContextCreate(); // Note this is the user's GPRT context, not XDG's internal one stored in GPRTRayTracer
+    auto generateRaysCallback = [&](const DeviceRayHitBuffers& buffer, size_t numRays) {
+      GPRTContext context = gprt_rt->context();
       GPRTModule module = gprtModuleCreate(context, ray_benchmark_deviceCode);
       auto genRandomRays = gprtComputeCreate<GenerateRandomRayParams>(
                            context, module, "generate_random_rays");
@@ -209,6 +213,8 @@ int main(int argc, char** argv) {
       randomRayParams.origin = { origin.x, origin.y, origin.z };
       randomRayParams.seed = seed;
       randomRayParams.total_threads = (uint32_t)(groups * threadsPerGroup);
+      randomRayParams.volume_mesh_id = volume;
+      randomRayParams.enabled = 1u;
 
       gprtComputeLaunch(genRandomRays,
                         { (uint32_t)groups, 1, 1 },
@@ -216,8 +222,8 @@ int main(int argc, char** argv) {
                         randomRayParams);
       gprtComputeSynchronize(context);
 
-      // Cleanup the user's context (not XDG's context)
-      gprtContextDestroy(context);
+      gprtComputeDestroy(genRandomRays);
+      gprtModuleDestroy(module);
     };
 
     // Let XDG internally allocate buffers and invoke the callback to populate them
@@ -229,6 +235,7 @@ int main(int argc, char** argv) {
 
     // ---- Ray tracing on device ----
     trace_timer.start();
+    printf("Tracing volume MeshID: %d\n", volume);
     xdg->ray_fire_prepared(volume, N); // ray_fire against pre-populated rays on device
     trace_timer.stop();
 
