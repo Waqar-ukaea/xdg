@@ -35,17 +35,6 @@ void generate_random_rays(uint3 DispatchThreadID: SV_DispatchThreadID,
   }
 }
 
-[shader("compute")]
-[numthreads(1, 1, 1)]
-void debug_read_tlas(uint3 DispatchThreadID: SV_DispatchThreadID,
-                     uniform DebugReadTLASParams params)
-{
-  if (DispatchThreadID.x > 0) return;
-  params.out[0] = params.table[params.index];
-}
-
-// Helpers 
-
 // Simple LCG random number generator
 double rand01(inout uint state)
 {

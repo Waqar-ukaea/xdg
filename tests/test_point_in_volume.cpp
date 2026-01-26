@@ -39,7 +39,6 @@ TEMPLATE_TEST_CASE("Point-in-volume on MeshMock", "[piv][mock]",
     check_ray_tracer_supported(rt_backend); // skip if backend not enabled at configuration time
     auto rti = create_raytracer(rt_backend);
     REQUIRE(rti);
-    rti->init();
 
     // Keep MeshMock usage consistent across backends
     auto mm = std::make_shared<MeshMock>(false);
@@ -161,3 +160,4 @@ TEMPLATE_TEST_CASE("Batch API Point-in-volume on MeshMock", "[piv][mock][batch]"
     }
   }
 }
+
