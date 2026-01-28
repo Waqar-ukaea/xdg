@@ -137,22 +137,6 @@ TEMPLATE_TEST_CASE("Batch API Ray Fire on MeshMock", "[rayfire][mock][batch]",
 
     rti->init();
 
-    // Helper to synthesize origins/directions for N rays
-    auto make_rays = [](size_t N, std::vector<Position>& origins, std::vector<Direction>& directions) {
-      origins.clear(); 
-      directions.clear();
-      origins.reserve(N); 
-      directions.reserve(N);
-      for (size_t i = 0; i < N; ++i) {
-        int axis = int(i % 3);
-        double s = (i % 2) ? 1.0 : -1.0;
-        origins.push_back({0.0, 0.0, 0.0});
-        if (axis == 0) directions.push_back({s, 0.0, 0.0});
-        else if (axis == 1) directions.push_back({0.0, s, 0.0});
-        else directions.push_back({0.0, 0.0, s});
-      }
-    };
-
     std::vector<Position> origins;
     std::vector<Direction> directions;
     size_t N; 

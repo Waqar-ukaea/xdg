@@ -134,6 +134,9 @@ class GPRTRayTracer : public RayTracer {
     void populate_rays_external(size_t numRays,
                                 const RayPopulationCallback& callback) override;
 
+    void download_hits(const size_t num_rays,
+                       std::vector<dblHit>& hits);
+
     GPRTContext context()
     {
       return context_;

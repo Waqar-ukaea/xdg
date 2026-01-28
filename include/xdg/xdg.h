@@ -11,6 +11,7 @@
 namespace xdg {
 
 struct DeviceRayHitBuffers; // forward declaration
+struct dblHit; // forward declaration
 class XDG {
 
 public:
@@ -200,6 +201,12 @@ Direction surface_normal(MeshID surface,
   {
     return ray_tracing_interface()->populate_rays_external(numRays, callback);
   }
+
+// Device to host transfer of hit buffers (GPRT only for now)
+#ifdef XDG_ENABLE_GPRT
+  void transfer_hits_buffer_to_host(const size_t num_rays,
+                                    std::vector<dblHit>& hits);
+#endif
 
 // Accessors
   const std::shared_ptr<RayTracer>& ray_tracing_interface() const {

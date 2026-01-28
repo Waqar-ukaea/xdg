@@ -133,31 +133,6 @@ void populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTrian
     record.aabbs[2 * primID + 1] = fpaabbmax;
 }
 
-// TODO - consider dropping this in favour of having external application fill buffers directly
-[shader("compute")]
-[numthreads(256, 1, 1)] 
-void pack_external_rays(uint3 DispatchThreadID: SV_DispatchThreadID, uniform ExternalRayParams extParams) {
-
-    // guard against more threads than primitives - Will this ever happen when performing operations on every ray? Probably not
-    // if (rayID >= extParams.num_rays)
-    //     return;
-
-    // Global thread index (we only use the x-dimension)
-    uint globalThreadID = DispatchThreadID.x;
-    uint stride = extParams.total_threads; // Groups * 256
-
-    // Grid-stride loop: each thread handles ray idx, idx+stride, idx+2*stride, ...
-    for (uint idx = globalThreadID; idx < extParams.num_rays; idx += stride)
-    {
-        xdg::dblRay r;
-        r.origin = extParams.origins[idx];
-        r.direction = extParams.directions[idx];
-        r.exclude_primitives = nullptr;
-        r.exclude_count = 0;
-        
-        extParams.xdgRays[idx] = r;
-    }
-}
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
 
 /* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/

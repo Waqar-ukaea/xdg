@@ -604,4 +604,22 @@ void GPRTRayTracer::populate_rays_external(size_t numRays,
   // Note: The callback is responsible for synchronization if using an async API
 }
 
+void GPRTRayTracer::download_hits(const size_t num_rays,
+                                  std::vector<dblHit>& hits)
+{
+  if (num_rays == 0) {
+    hits.clear();
+    return;
+  }
+  if (num_rays > rayHitBuffers_.view.capacity) {
+    fatal_error("Requested {} hits, but hit buffer capacity is {}", num_rays, rayHitBuffers_.view.capacity);
+  }
+
+  hits.resize(num_rays);
+  gprtBufferMap(rayHitBuffers_.hit);
+  dblHit* hit = gprtBufferGetHostPointer(rayHitBuffers_.hit);
+  std::copy(hit, hit + num_rays, hits.begin());
+  gprtBufferUnmap(rayHitBuffers_.hit);
+}
+
 } // namespace xdg

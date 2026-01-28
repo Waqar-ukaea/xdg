@@ -47,13 +47,4 @@ struct dblRayFirePushConstants {
   xdg::HitOrientation hitOrientation;
 };
 
-// TODO - Drop this in favour of exposing buffers directly
-struct ExternalRayParams {
-  xdg::dblRay* xdgRays;
-  double3* origins;
-  double3* directions;
-  uint32_t num_rays;
-  uint32_t total_threads;
-};
-
 #endif

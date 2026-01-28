@@ -18,6 +18,7 @@ test_tet_containment
 test_tracks
 test_tet_intersection
 test_tally_segments
+test_direct_ray_buffer_access
 )
 
 if (XDG_ENABLE_MOAB)
@@ -47,6 +48,18 @@ foreach(test ${TEST_NAMES})
         SKIP_RETURN_CODE 4 # registers skipped tests with CTest correctly
         TEST_PREFIX "${test}::")
 endforeach()
+
+if (XDG_ENABLE_GPRT)
+    embed_devicecode(
+        OUTPUT_TARGET
+        test_direct_ray_buffer_access_deviceCode
+        HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_direct_ray_buffer_access_shared.h
+        SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_direct_ray_buffer_access_deviceCode.slang
+    )
+    target_link_libraries(test_direct_ray_buffer_access test_direct_ray_buffer_access_deviceCode)
+endif()
 
 
 set(
