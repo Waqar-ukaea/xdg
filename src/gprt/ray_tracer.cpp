@@ -13,8 +13,12 @@ GPRTRayTracer::GPRTRayTracer()
   rayHitBuffers_.hit = gprtDeviceBufferCreate<dblHit>(context_, rayHitBuffers_.view.capacity);
   rayHitBuffers_.view.rayDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   rayHitBuffers_.view.hitDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+  rayHitBuffers_.view.rayStride = sizeof(dblRay);
+  rayHitBuffers_.view.hitStride = sizeof(dblHit);
 
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
+
+  tlas_handle_buffer_ = gprtDeviceBufferCreate<SurfaceAccelerationStructure>(context_);
 
   setup_shaders();
 
@@ -46,9 +50,9 @@ GPRTRayTracer::~GPRTRayTracer()
   }
 
   // Destroy BLAS structures
-  for (const auto& blas : blas_handles_) {
-    gprtAccelDestroy(blas);
-  }
+  // for (const auto& blas : blas_handles_) {
+  //   gprtAccelDestroy(blas);
+  // }
 
   // Destroy Geoms and Types
   for (const auto& [surf, geom] : surface_to_geometry_map_) {
@@ -60,6 +64,7 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtBufferDestroy(rayHitBuffers_.ray);
   gprtBufferDestroy(rayHitBuffers_.hit);
   gprtBufferDestroy(excludePrimitivesBuffer_);
+  gprtBufferDestroy(tlas_handle_buffer_);
 
   // Destroy module and context
   gprtModuleDestroy(module_);
@@ -75,7 +80,6 @@ void GPRTRayTracer::setup_shaders()
 
   missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
   aabbPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_aabbs");
-  packRaysProgam_ = gprtComputeCreate<ExternalRayParams>(context_, module_, "pack_external_rays");
 
   // Create a "triangle" geometry type and set its closest-hit program
   trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
@@ -85,9 +89,13 @@ void GPRTRayTracer::setup_shaders()
 
 void GPRTRayTracer::init() 
 {
+  update_tlas_table_();
+
   // Build the shader binding table (SBT) after all shader programs and acceleration structures are set up
   gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
   // Note that should we need to update any shaders or acceleration structures, we must rebuild the SBT  
+
+  initialized_ = true;
 }
 
 std::pair<TreeID,TreeID>
@@ -205,7 +213,17 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   GPRTAccel volume_tlas = gprtInstanceAccelCreate(context_, surfaceBlasInstances.size(), instanceBuffer);
   gprtAccelBuild(context_, volume_tlas, buildParams_);
   surface_volume_tree_to_accel_map[tree] = volume_tlas;
-  
+  surface_tree_to_volume_map_[tree] = volume_id;
+  if (volume_id >= tlas_handles_.size()) {
+    tlas_handles_.resize(volume_id + 1, SurfaceAccelerationStructure{});
+  }
+  tlas_handles_[volume_id] = gprtAccelGetDeviceAddress(volume_tlas);
+
+  if (initialized_) {
+    update_tlas_table_();
+    gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
+  }
+
   return tree;
 }
 
@@ -241,6 +259,8 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
   dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
   ray[0].origin = {point.x, point.y, point.z};
   ray[0].direction = {directionUsed.x, directionUsed.y, directionUsed.z};
+  ray[0].volume_mesh_id = surface_tree_to_volume_map_.at(tree);
+  ray[0].enabled = 1; // Ensure the ray is enabled
 
   if (exclude_primitives) {
     if (!exclude_primitives->empty()) gprtBufferResize(context_, excludePrimitivesBuffer_, exclude_primitives->size(), false);
@@ -295,11 +315,13 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   GPRTAccel volume = surface_volume_tree_to_accel_map.at(tree);
   auto rayGen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
   dblRayGenData* rayGenData = gprtRayGenGetParameters(rayGen);
-  
+
   gprtBufferMap(rayHitBuffers_.ray); // Update the ray input buffer
   dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
   ray[0].origin = {origin.x, origin.y, origin.z};
   ray[0].direction = {direction.x, direction.y, direction.z};
+  ray[0].volume_mesh_id = surface_tree_to_volume_map_.at(tree);
+  ray[0].enabled = 1; // Ensure the ray is enabled
 
   if (exclude_primitives) {
     if (!exclude_primitives->empty()) gprtBufferResize(context_, excludePrimitivesBuffer_, exclude_primitives->size(), false);
@@ -370,6 +392,8 @@ void GPRTRayTracer::point_in_volume(TreeID tree,
   for (size_t i = 0; i < num_points; ++i) {
     ray[i].origin = {points[i].x, points[i].y, points[i].z};
     ray[i].exclude_primitives = nullptr;
+    ray[i].volume_mesh_id = surface_tree_to_volume_map_.at(tree);
+    ray[i].enabled = 1; // Ensure the ray is enabled
   }
 
   // Directions
@@ -434,6 +458,8 @@ void GPRTRayTracer::ray_fire(TreeID tree,
     ray[i].origin = {origin.x, origin.y, origin.z};
     ray[i].direction = {direction.x, direction.y, direction.z};
     ray[i].exclude_primitives = nullptr; // Not currently supported in batch version
+    ray[i].volume_mesh_id = surface_tree_to_volume_map_.at(tree);
+    ray[i].enabled = 1; // Ensure the ray is enabled
   }
 
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
@@ -471,10 +497,10 @@ void GPRTRayTracer::ray_fire(TreeID tree,
 }
 
 void 
-GPRTRayTracer::ray_fire_packed(TreeID tree,
-                               const size_t num_rays,
-                               const double dist_limit,
-                               HitOrientation orientation)
+GPRTRayTracer::ray_fire_prepared(TreeID tree,
+                                  const size_t num_rays,
+                                  const double dist_limit,
+                                  HitOrientation orientation)
 {
   if (num_rays == 0) return; // no work to do. Early exit
 
@@ -514,7 +540,7 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
   if (N <= rayHitBuffers_.view.capacity) return; // current capacity is sufficient
 
   // Resize buffers to accommodate N rays - double the capacity or set to N, whichever is larger
-  size_t newCapacity = std::max(uint(N), rayHitBuffers_.view.capacity * 2); 
+  size_t newCapacity = std::max(N, rayHitBuffers_.view.capacity * 2); 
 
   gprtBufferResize(context_, rayHitBuffers_.ray, newCapacity, false);
   gprtBufferResize(context_, rayHitBuffers_.hit, newCapacity, false);
@@ -523,6 +549,8 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
   // Get fresh device pointers after resize
   rayHitBuffers_.view.rayDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   rayHitBuffers_.view.hitDevPtr = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+  rayHitBuffers_.view.rayStride = sizeof(dblRay);
+  rayHitBuffers_.view.hitStride = sizeof(dblHit);
 
   // Since we have resized the ray buffers, we need to update the geom_data->rayIn pointers in all geometries too 
   for (auto const& [surf, geom] : surface_to_geometry_map_) {
@@ -535,9 +563,24 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
     dblRayGenData* rayGenData = gprtRayGenGetParameters(rayGen);
     rayGenData->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
     rayGenData->hit = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+    rayGenData->meshid_to_accel_address = gprtBufferGetDevicePointer(tlas_handle_buffer_);
   }
 
   gprtBuildShaderBindingTable(context_, static_cast<GPRTBuildSBTFlags>(GPRT_SBT_GEOM | GPRT_SBT_RAYGEN));
+}
+
+// Update the TLAS table (MeshID -> SurfaceAccelerationStructure) buffer on the device
+void GPRTRayTracer::update_tlas_table_()
+{
+  gprtBufferResize<SurfaceAccelerationStructure>(context_, tlas_handle_buffer_, tlas_handles_.size(), false);
+  gprtBufferMap(tlas_handle_buffer_);
+    std::copy(tlas_handles_.begin(), tlas_handles_.end(), gprtBufferGetHostPointer(tlas_handle_buffer_));
+  gprtBufferUnmap(tlas_handle_buffer_);
+
+  for (auto type : {RayGenType::RAY_FIRE, RayGenType::POINT_IN_VOLUME}) {
+    auto* raygendata = gprtRayGenGetParameters(rayGenPrograms_.at(type));
+    raygendata->meshid_to_accel_address = gprtBufferGetDevicePointer(tlas_handle_buffer_);
+  }
 }
 
 DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
@@ -546,34 +589,37 @@ DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
   return rayHitBuffers_.view;
 }
 
-void GPRTRayTracer::pack_external_rays(void* origins_device_ptr,
-                                       void* directions_device_ptr,
-                                       size_t num_rays)
+void GPRTRayTracer::populate_rays_external(size_t numRays,
+                                           const RayPopulationCallback& callback)
 {
-  if (num_rays == 0) return;
+  if (numRays == 0) return;
 
-  check_rayhit_buffer_capacity(num_rays);
-  ExternalRayParams params = {};
-  params.num_rays = num_rays;
+  // Ensure device buffers are large enough
+  check_rayhit_buffer_capacity(numRays);
 
-  // Workgroup setup 
-  constexpr int threadsPerGroup = 256;
-  const int neededGroups = (params.num_rays + threadsPerGroup - 1) / threadsPerGroup;
-  const int groups = std::min(neededGroups, WORKGROUP_LIMIT);
+  // Use the user callback to populate the rays directly on the device
+  callback(rayHitBuffers_.view, numRays);
 
-  params.xdgRays = rayHitBuffers_.view.rayDevPtr; // dblRay*
-  params.origins = static_cast<double3*>(origins_device_ptr);
-  params.directions = static_cast<double3*>(directions_device_ptr);
-  params.total_threads = groups * threadsPerGroup;
-
-  gprtComputeLaunch(packRaysProgam_,
-                    { groups, 1, 1 },
-                    { threadsPerGroup, 1, 1 },
-                    params);
-  gprtComputeSynchronize(context_);
-
+  // After callback returns, we assume the ray buffer is populated and ready to trace
+  // Note: The callback is responsible for synchronization if using an async API
 }
 
+void GPRTRayTracer::download_hits(const size_t num_rays,
+                                  std::vector<dblHit>& hits)
+{
+  if (num_rays == 0) {
+    hits.clear();
+    return;
+  }
+  if (num_rays > rayHitBuffers_.view.capacity) {
+    fatal_error("Requested {} hits, but hit buffer capacity is {}", num_rays, rayHitBuffers_.view.capacity);
+  }
+
+  hits.resize(num_rays);
+  gprtBufferMap(rayHitBuffers_.hit);
+  dblHit* hit = gprtBufferGetHostPointer(rayHitBuffers_.hit);
+  std::copy(hit, hit + num_rays, hits.begin());
+  gprtBufferUnmap(rayHitBuffers_.hit);
+}
 
 } // namespace xdg
-

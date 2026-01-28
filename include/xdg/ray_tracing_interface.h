@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 
 #include "xdg/error.h"
 #include "xdg/constants.h"
@@ -15,19 +16,45 @@
 namespace xdg
 {
 
-struct dblRay; // forward declaration
-struct dblHit; // forward declaration
+/**
+ * @brief Device ray/hit buffer descriptor
+ *
+ * This structure provides access to device-allocated ray and hit buffers
+ * in a backend-agnostic way. The buffers contain XDG's standard ray and hit
+ * data structures (dblRay and dblHit), regardless of which compute backend
+ * is being used.
+ *
+ * Key design principle:
+ * - Device pointers are opaque (void*)
+ * - The data layout is always the XDG types dblRay and dblHit
+ * - Downstream code can write to these buffers (hopefully) using any compute API
+ *
+ * For type-safe access in downstream code:
+ * - Cast rayDevPtr to (dblRay*) when using C++ or kernels
+ * - Cast hitDevPtr to (dblHit*) when reading hit results
+ */
 struct DeviceRayHitBuffers {
-  dblRay* rayDevPtr; // device pointer to ray buffers
-  dblHit* hitDevPtr; // device pointer to hit buffers
-  uint capacity = 0;
-  
-  // TODO - Renable once I figure out a way to make this slang safe 
-  // bool valid() 
-  // {
-  //   return (rays != 0) && (hits != 0) && (capacity > 0);
-  // }
+  void* rayDevPtr;
+  void* hitDevPtr;
+  size_t capacity; // Number of rays the buffer can hold
+  size_t rayStride; // Bytes between ray elements - sizeof(dblRay)
+  size_t hitStride; // Bytes between hit elements - sizeof(dblHit)
 };
+
+/**
+ * @brief Callback alias for external ray population
+ *
+ * Allows downstream applications to populate ray buffers using their own compute backend
+ * (GPRT, CUDA, OpenMP) without XDG needing to know the specifics.
+ *
+ * The callback receives opaque device pointers and should interpret them according to
+ * the buffer metadata (stride information). Alternatively, users can rely on the standard
+ * dblRay/dblHit layouts if they don't need custom padding/alignment.
+ *
+ * @param buffer Device ray buffer descriptor with opaque pointers and metadata
+ * @param numRays Number of rays to generate/populate
+ */
+using RayPopulationCallback = std::function<void(const DeviceRayHitBuffers& buffer, size_t numRays)>;
 
 class RayTracer {
 public:
@@ -239,7 +266,7 @@ public:
    * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
    * @return Void. Outputs stored in dblHit buffer on device
    */  
-  virtual void ray_fire_packed(TreeID tree,
+  virtual void ray_fire_prepared(TreeID tree,
                                const size_t num_rays,
                                const double dist_limit = INFTY,
                                HitOrientation orientation = HitOrientation::EXITING) 
@@ -264,11 +291,28 @@ public:
     return {};
   }
 
-  virtual void pack_external_rays(void* origins_device_ptr,
-                                  void* directions_device_ptr,
-                                  size_t num_rays) {
+  /**
+   * @brief Allocate device ray buffers and populate them via a user-provided callback
+   *
+   * This method allows downstream applications to populate ray buffers using any compute
+   * backend (GPRT, CUDA, HIP, OpenCL, etc.) without coupling them to XDG's internals.
+   *
+   * The workflow:
+   * 1. XDG allocates device memory for rays (if not already large enough)
+   * 2. XDG passes device pointers to the callback
+   * 3. User's callback populates the buffers using their preferred compute kernel/shader
+   * 4. User's callback returns (XDG assumes buffers are now populated)
+   * 5. Call xdg::ray_fire_prepared() to trace the populated rays
+   *
+   * This avoids unnecessary host-device transfers by allowing users to write directly
+   * to XDG's device buffers without any host-side transfers.
+   *
+   * @param numRays Number of rays to allocate space for
+   * @param callback Function that will populate the ray buffer. Receives the allocated buffer and ray count.
+   */
+  virtual void populate_rays_external(size_t numRays,
+                                      const RayPopulationCallback& callback) {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
-    return;
   }
 
 protected:

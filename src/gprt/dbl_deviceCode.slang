@@ -53,22 +53,27 @@ void ray_fire_miss(inout RayFirePayload payload) {
 void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
+    xdg::dblRay ray = record.ray[rayID]; // recover ray from buffer
 
     // Trace the ray into the scene
     RayDesc rayDesc;
-    rayDesc.Origin = float3(record.ray[rayID].origin);
-    rayDesc.Direction = normalize(float3(record.ray[rayID].direction));
+    rayDesc.Origin = float3(ray.origin);
+    rayDesc.Direction = normalize(float3(ray.direction));
     rayDesc.TMin = float(PC.tMin); 
     rayDesc.TMax = float(PC.tMax); 
 
-    SurfaceAccelerationStructure world = PC.volume_accel;
+    int mesh_id = ray.volume_mesh_id;
+    // Recover the TLAS we are tracing against for this ray
+    SurfaceAccelerationStructure world = record.meshid_to_accel_address[mesh_id];
 
-    // Pass the ray's origin and direction to the payload
+    // Set payload default values
     payload.distance = -1.0f;
     payload.surf_id = -1;
     payload.tlas = world;
 
-    TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    if (ray.enabled == 1u) {
+        TraceRay(PC.volume_accel, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    }
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.hit[rayID].distance = payload.distance;
@@ -80,11 +85,12 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
 void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     RayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
+    xdg::dblRay ray = record.ray[rayID]; // recover ray from buffer
 
     // Trace the ray into the scene
     RayDesc rayDesc;
-    rayDesc.Origin = float3(record.ray[rayID].origin);
-    rayDesc.Direction = float3(normalize(record.ray[rayID].direction));
+    rayDesc.Origin = float3(ray.origin);
+    rayDesc.Direction = float3(normalize(ray.direction));
     rayDesc.TMin = float(PC.tMin); 
     rayDesc.TMax = float(PC.tMax); 
 
@@ -95,7 +101,9 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     payload.tlas = world;
     payload.piv = xdg::PointInVolume::OUTSIDE; // Initialize point in volume check result to outside (0)
     
-    TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    if (ray.enabled == 1u) { // skip RT pipeline for rays that are marked as disabled 
+        TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    }
 
     record.hit[rayID].surf_id = payload.surf_id;
     record.hit[rayID].piv = payload.piv; // Point in volume check result
@@ -125,31 +133,6 @@ void populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTrian
     record.aabbs[2 * primID + 1] = fpaabbmax;
 }
 
-// TODO - consider dropping this in favour of having external application fill buffers directly
-[shader("compute")]
-[numthreads(256, 1, 1)] 
-void pack_external_rays(uint3 DispatchThreadID: SV_DispatchThreadID, uniform ExternalRayParams extParams) {
-
-    // guard against more threads than primitives - Will this ever happen when performing operations on every ray? Probably not
-    // if (rayID >= extParams.num_rays)
-    //     return;
-
-    // Global thread index (we only use the x-dimension)
-    uint globalThreadID = DispatchThreadID.x;
-    uint stride = extParams.total_threads; // Groups * 256
-
-    // Grid-stride loop: each thread handles ray idx, idx+stride, idx+2*stride, ...
-    for (uint idx = globalThreadID; idx < extParams.num_rays; idx += stride)
-    {
-        xdg::dblRay r;
-        r.origin = extParams.origins[idx];
-        r.direction = extParams.directions[idx];
-        r.exclude_primitives = nullptr;
-        r.exclude_count = 0;
-        
-        extParams.xdgRays[idx] = r;
-    }
-}
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
 
 /* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/
@@ -162,6 +145,7 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     uint rayID = DispatchRaysIndex().x;
     uint nRays = DispatchRaysDimensions().x;
     uint flags = RayFlags();
+    xdg::dblRay ray = record.ray[rayID]; // recover ray from buffer
 
     if (rayID >= nRays) {
         return;
@@ -183,8 +167,8 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     double3 v1 = record.vertex[indices[1]];
     double3 v2 = record.vertex[indices[2]];
 
-    double3 origin = record.ray[rayID].origin;
-    double3 direction = record.ray[rayID].direction;
+    double3 origin = ray.origin;
+    double3 direction = ray.direction;
 
     double tMin = PC.tMin;
     double tMax = PC.tMax;
@@ -273,9 +257,9 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
         return;
     }
 
-    for (int i = 0; i < record.ray[rayID].exclude_count; ++i)
+    for (int i = 0; i < ray.exclude_count; ++i)
     {
-        if (record.ray[rayID].exclude_primitives[i] == global_prim_id) {
+        if (ray.exclude_primitives[i] == global_prim_id) {
             return;
         }
     }
