@@ -9,6 +9,9 @@
 #include "xdg/mesh_managers.h"
 
 #include "xdg/ray_tracers.h"
+#ifdef XDG_ENABLE_GPRT
+#include "xdg/gprt/ray.h"
+#endif
 
 namespace xdg {
 
@@ -51,6 +54,18 @@ void XDG::prepare_volume_for_raytracing(MeshID volume) {
     volume_to_surface_tree_map_[volume] = surface_tree;
     volume_to_point_location_tree_map_[volume] = volume_tree;
 }
+
+#ifdef XDG_ENABLE_GPRT
+void XDG::transfer_hits_buffer_to_host(const size_t num_rays,
+                                       std::vector<dblHit>& hits)
+{
+  auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(ray_tracing_interface());
+  if (!gprt_rt) {
+    fatal_error("transfer_hits_buffer_to_host is only supported with the GPRT ray tracer");
+  }
+  gprt_rt->download_hits(num_rays, hits);
+}
+#endif
 
 std::shared_ptr<XDG> XDG::create(MeshLibrary mesh_lib, RTLibrary ray_tracing_lib)
 {
@@ -359,12 +374,5 @@ double XDG::measure_volume_area(MeshID volume) const
   }
   return area;
 }
-
-void XDG::pack_external_rays(void* origins_device_ptr,
-                             void* directions_device_ptr,
-                             size_t num_rays) 
-  {
-    return ray_tracing_interface()->pack_external_rays(origins_device_ptr, directions_device_ptr, num_rays);
-  }
 
 } // namespace xdg

@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <random>
-#include <cmath>
 
 #include "xdg/error.h"
 #include "xdg/mesh_manager_interface.h"
@@ -15,47 +14,11 @@
 
 #include "argparse/argparse.hpp"
 
-// GPRT includes
-#include "gprt/gprt.h"
-#include "ray_benchmark_shared.h"
+#include "ray_benchmark.h"
 
 #include <omp.h>
 
 using namespace xdg;
-extern GPRTProgram ray_benchmark_deviceCode;
-
-inline double rand01(uint32_t &state)
-{
-  state = state * 1664525u + 1013904223u;
-  return double(state) * (1.0 / 4294967296.0);
-}
-
-inline Direction random_unit_dir_lcg(uint32_t &state)
-{
-  double x1, x2, s;
-  do {
-    x1 = rand01(state) * 2.0 - 1.0;
-    x2 = rand01(state) * 2.0 - 1.0;
-    s  = x1 * x1 + x2 * x2;
-  } while (s <= 0.0 || s >= 1.0);
-
-  double t = 2.0 * std::sqrt(1.0 - s);
-  return { x1 * t, x2 * t, 1.0 - 2.0 * s };
-}
-
-// Generates a random point cloud with radius (--source-radius) 
-inline std::pair<Position,Direction> random_spherical_source(const Position& origin, std::uint32_t state, double source_radius)
-{
-  // Always generate random direction
-  Direction dir = random_unit_dir_lcg(state);
-  Position pos = origin;
-  if (source_radius > 0.0) {
-    // random origins (spherical source)
-    double r = source_radius * std::cbrt(rand01(state)); // uniform in ball
-    pos += dir * r;
-  } 
-  return {pos, dir};
-}
 
 int main(int argc, char** argv) {
 
@@ -182,43 +145,17 @@ int main(int argc, char** argv) {
 
   std::cout << "XDG initalisation Time = " << setup_timer.elapsed() << "s" << std::endl;
 
-  // --------------------------
-  // Backend-specific sections
-  // --------------------------
-
+  std::shared_ptr<GPRTRayTracer> gprt_rt;
   if (rt_lib == RTLibrary::GPRT) {
-    // One-time GPRT compute setup (not timed as generation)
-    auto gprt_rti = std::dynamic_pointer_cast<xdg::GPRTRayTracer>(rti);
-    if (!gprt_rti)
-      fatal_error("Failed to cast RayTracer to GPRTRayTracer");
-
-    GPRTContext context = gprt_rti->context();
-    GPRTModule module   = gprtModuleCreate(context, ray_benchmark_deviceCode);
-    auto genRandomRays  = gprtComputeCreate<GenerateRandomRayParams>(
-                            context, module, "generate_random_rays");
-
-    // ---- Random ray generation on device ----
+    // ---- Random ray generation on device via callback method ----
     gen_timer.start();
 
-    auto rayHitBuffers = gprt_rti->get_device_rayhit_buffers(N);
+    gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(xdg->ray_tracing_interface());
+    auto generateRaysCallback = 
+      tools::benchmark::make_generate_rays_callback(gprt_rt->context(), origin, source_radius, seed, volume);
 
-    constexpr int threadsPerGroup = 64;
-    const int neededGroups = (int)((N + threadsPerGroup - 1) / threadsPerGroup);
-    const int groups       = std::min(neededGroups, WORKGROUP_LIMIT);
-
-    GenerateRandomRayParams randomRayParams = {};
-    randomRayParams.rays = rayHitBuffers.rayDevPtr; // xdg::dblRay* on device
-    randomRayParams.numRays = (uint32_t)N;
-    randomRayParams.source_radius = source_radius;
-    randomRayParams.origin = { origin.x, origin.y, origin.z };
-    randomRayParams.seed = seed;
-    randomRayParams.total_threads = (uint32_t)(groups * threadsPerGroup);
-
-    gprtComputeLaunch(genRandomRays,
-                      { (uint32_t)groups, 1, 1 },
-                      { (uint32_t)threadsPerGroup, 1, 1 },
-                      randomRayParams);
-    gprtComputeSynchronize(context);
+    // Let XDG internally allocate buffers and invoke the callback to populate them
+    xdg->populate_rays_external(N, generateRaysCallback);
 
     gen_timer.stop();
     std::cout << "Random ray generation (via external compute shader) Time = "
@@ -229,8 +166,8 @@ int main(int argc, char** argv) {
     xdg->ray_fire_prepared(N); // ray_fire against pre-packed rays on device
     trace_timer.stop();
 
-  } else {
-    // EMBREE / CPU backend
+  } 
+  else { // EMBREE / CPU backend
 
     // ---- Random ray generation on host ----
     gen_timer.start();
@@ -240,7 +177,7 @@ int main(int argc, char** argv) {
     #pragma omp parallel for schedule(static)
     for (uint32_t i = 0; i < N; ++i) {
       uint32_t state = seed ^ i;
-      auto [pos,dir] = random_spherical_source(origin, state, source_radius);
+      auto [pos,dir] = tools::benchmark::random_spherical_source(origin, state, source_radius);
       origins[i] = pos;
       directions[i] = dir;
     }

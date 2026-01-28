@@ -33,7 +33,7 @@ struct DPTriangleGeomData {
 struct dblRayGenData {
   xdg::dblRay *ray;
   xdg::dblHit *hit;
-  SurfaceAccelerationStructure* meshid_to_accel_address; // MeshID->TLAS address table
+  SurfaceAccelerationStructure* meshid_to_accel_address; // MeshID->TLAS address table to recover volume to trace against
 };
 
 /* A small structure of constants that can change every frame without rebuilding the
@@ -45,15 +45,6 @@ struct dblRayFirePushConstants {
   SurfaceAccelerationStructure volume_accel; 
   int volume_tree;
   xdg::HitOrientation hitOrientation;
-};
-
-// TODO - Drop this in favour of exposing buffers directly
-struct ExternalRayParams {
-  xdg::dblRay* xdgRays;
-  double3* origins;
-  double3* directions;
-  uint32_t num_rays;
-  uint32_t total_threads;
 };
 
 #endif

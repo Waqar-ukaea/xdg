@@ -30,10 +30,10 @@ void generate_random_rays(uint3 DispatchThreadID: SV_DispatchThreadID,
     params.rays[idx].direction = dir;
     params.rays[idx].exclude_primitives = nullptr;
     params.rays[idx].exclude_count = 0;
+    params.rays[idx].enabled = params.enabled;
+    params.rays[idx].volume_mesh_id = params.volume_mesh_id;
   }
 }
-
-// Helpers 
 
 // Simple LCG random number generator
 double rand01(inout uint state)

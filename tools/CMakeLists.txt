@@ -33,3 +33,5 @@ foreach(tool ${TOOL_NAMES})
     endif()
     install(TARGETS ${tool_exec} DESTINATION ${CMAKE_INSTALL_BINDIR}/tools)
 endforeach()
+
+add_subdirectory(ray_benchmark)
