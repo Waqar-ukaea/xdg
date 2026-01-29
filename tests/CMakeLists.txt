@@ -18,7 +18,6 @@ test_tet_containment
 test_tracks
 test_tet_intersection
 test_tally_segments
-test_direct_ray_buffer_access
 )
 
 if (XDG_ENABLE_MOAB)
@@ -36,6 +35,11 @@ endif()
 # placing this last as it's a slow test
 if (XDG_ENABLE_MOAB)
     list(APPEND TEST_NAMES test_overlap_check)
+endif()
+
+# This test really should be appended when any GPU library is enabled
+if (XDG_ENABLE_GPRT)
+    list(APPEND TEST_NAMES test_direct_ray_buffer_access)
 endif()
 
 foreach(test ${TEST_NAMES})

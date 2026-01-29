@@ -10,7 +10,6 @@
 #include "xdg/ray_tracing_interface.h"
 #include "xdg/error.h"
 
-#include "gprt/gprt.h"
 #include "shared_structs.h"
 
 extern GPRTProgram dbl_deviceCode;
