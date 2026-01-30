@@ -54,7 +54,8 @@ enum class MeshLibrary {
 // Ray Tracing library identifier
 enum class RTLibrary {
   EMBREE,
-  GPRT
+  GPRT,
+  DEEPEE_RT
 };
 
 static const std::map<MeshLibrary, std::string> MESH_LIB_TO_STR =
