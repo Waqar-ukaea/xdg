@@ -7,12 +7,9 @@
 
 #include "xdg/constants.h"
 #include "xdg/mesh_manager_interface.h"
-#include "xdg/primitive_ref.h"
-#include "xdg/geometry_data.h"
 #include "xdg/ray_tracing_interface.h"
-#include "xdg/ray.h"
 #include "xdg/error.h"
-#include "gprt/gprt.h"
+
 #include "shared_structs.h"
 
 extern GPRTProgram dbl_deviceCode;
@@ -26,17 +23,16 @@ enum class RayGenType {
 };
 
 struct gprtRayHit {
-  size_t capacity = 1; // Max number of rays allocated 
-  size_t size = 0;     // Current number of active rays 
+  DeviceRayHitBuffers view; // external facing POD for rayhit buffers
+  size_t size = 0; // Current number of active rays 
 
   GPRTBufferOf<dblRay> ray = nullptr;
   GPRTBufferOf<dblHit> hit = nullptr;
-  dblRay* devRayAddr = nullptr;
-  dblHit* devHitAddr = nullptr;
 
-  bool is_valid() const { return capacity > 0 && ray && hit && devRayAddr && devHitAddr; }
+  bool is_valid() const { 
+    return view.capacity > 0 && ray && hit && view.rayDevPtr && view.hitDevPtr; 
+  }
 };
-
 class GPRTRayTracer : public RayTracer {
   public:
     GPRTRayTracer();
@@ -83,12 +79,32 @@ class GPRTRayTracer : public RayTracer {
                         const Direction* direction = nullptr,
                         const std::vector<MeshID>* exclude_primitives = nullptr) const override;
 
+    void point_in_volume(TreeID tree,
+                         const Position* points,
+                         const size_t num_points,
+                         uint8_t* results,
+                         const Direction* directions = nullptr, 
+                         std::vector<MeshID>* exclude_primitives = nullptr) override;
+
     std::pair<double, MeshID> ray_fire(TreeID scene,
                                       const Position& origin,
                                       const Direction& direction,
                                       const double dist_limit = INFTY,
                                       HitOrientation orientation = HitOrientation::EXITING,
                                       std::vector<MeshID>* const exclude_primitives = nullptr) override;
+    void ray_fire(TreeID tree,
+                  const Position* origins,
+                  const Direction* directions,
+                  const size_t num_rays,
+                  double* hitDistances,
+                  MeshID* surfaceIDs,
+                  const double dist_limit = INFTY,
+                  HitOrientation orientation = HitOrientation::EXITING,
+                  std::vector<MeshID>* const exclude_primitives = nullptr) override;
+
+    void ray_fire_prepared(const size_t num_rays,
+                           const double dist_limit = INFTY,
+                           HitOrientation orientation = HitOrientation::EXITING) override;
 
     std::pair<double, MeshID> closest(TreeID scene,
                                       const Position& origin) override {};
@@ -100,9 +116,41 @@ class GPRTRayTracer : public RayTracer {
       fatal_error("Occlusion queries are not currently supported with GPRT ray tracer");
       return false;
     }
-    
+
+    // Check to see if buffers large enough and resize if not
+    void check_rayhit_buffer_capacity(const size_t N) override;
+
+    // Method to expose device ray and hit buffers for external population
+    DeviceRayHitBuffers get_device_rayhit_buffers(const size_t N) override;
+
+    /**
+     * @brief Allocate device buffers and invoke a callback to populate them
+     *
+     * This method enables downstream applications to populate ray buffers using
+     * any compute API (GPRT, CUDA, HIP, etc.) without XDG needing to know the details.
+     */
+    void populate_rays_external(size_t numRays,
+                                const RayPopulationCallback& callback) override;
+
+    void download_hits(const size_t num_rays,
+                       std::vector<dblHit>& hits);
+
+    GPRTContext context()
+    {
+      return context_;
+    }
+
+    SurfaceAccelerationStructure* tlas_handle_device_ptr() const
+    {
+      return gprtBufferGetDevicePointer(tlas_handle_buffer_);
+    }
+
+    size_t tlas_handle_count() const
+    {
+      return tlas_handles_.size();
+    }
+
   private:
-    void check_ray_buffer_capacity(size_t N);
 
     // GPRT objects 
     GPRTContext context_;
@@ -133,7 +181,12 @@ class GPRTRayTracer : public RayTracer {
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
-    std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
+    std::unordered_map<SurfaceTreeID, MeshID> surface_tree_to_volume_map_;
+    std::vector<SurfaceAccelerationStructure> tlas_handles_; // Host side storage of TLAS device addresses
+    GPRTBufferOf<SurfaceAccelerationStructure> tlas_handle_buffer_; // Device buffer for TLAS addresses
+    bool initialized_ {false}; // flag to indicate if init() has been called
+
+    void update_tlas_table_();
 
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};
