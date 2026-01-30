@@ -44,11 +44,9 @@ foreach(test ${TEST_NAMES})
                                   BUILD_RPATH "$<TARGET_FILE_DIR:xdg>")
     catch_discover_tests(${test}
         PROPERTIES
-        SKIP_RETURN_CODE 4 # registers skipped tests with CTest correctly
-        TEST_PREFIX "${test}::")
-    # add_test(NAME ${test}
-    #          COMMAND ${test} --allow-running-no-tests --reporter console --out=/dev/stdout
-    #          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+        SKIP_RETURN_CODE 4
+        TEST_PREFIX "${test}::"
+        EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
 
 
