@@ -516,6 +516,24 @@ GPRTRayTracer::ray_fire_prepared(const size_t num_rays,
   return;
 }
 
+void 
+GPRTRayTracer::point_in_volume_prepared(const size_t num_points)
+{
+  if (num_points == 0) return; // no work to do. Early exit
+
+  check_rayhit_buffer_capacity(num_points); 
+  auto rayGen = rayGenPrograms_.at(RayGenType::POINT_IN_VOLUME);
+
+  dblRayFirePushConstants pushConstants;
+  pushConstants.tMax = INFTY;
+  pushConstants.tMin = 0.0;
+  pushConstants.hitOrientation = HitOrientation::ANY; // Set orientation for the ray
+  
+  gprtRayGenLaunch1D(context_, rayGen, num_points, pushConstants);
+  gprtGraphicsSynchronize(context_);
+  return;
+}
+
 void GPRTRayTracer::create_global_surface_tree()
 {
   // Create a TLAS (Top-Level Acceleration Structure) for all the volumes

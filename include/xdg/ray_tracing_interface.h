@@ -197,22 +197,6 @@ public:
 
   // GPU Ray Tracing Support
 
-
-  /**
-   * @brief Array based version of point_in_volume query
-   *
-   * This method performs a set of point_in_volume queries on a batch of rays defined by their origins and directions.
-   * It computes whether or not a point lies in a given volume for each point in the batch. With GPRT ray tracing
-   * this launches the RT pipeline with the number of rays provided.
-   * 
-   * @param[in] tree The TreeID of the volume we are querying against
-   * @param[in] points An array of points to query
-   * @param[in] num_points The number of points to be processed in the batch
-   * @param[out] results An output array to store the computed results for each point (1 if inside volume, 0 if outside)
-   * @param[in] directions (optional) array of directions to launch rays in explicit directions per point - these must be non-zero length
-   * @param[in] exclude_primitives (optional) vector of surface element MeshIDs to exclude from intersection tests
-   * @return Void. Outputs stored in results array
-   */  
   virtual void point_in_volume(TreeID tree,
                                const Position* points,
                                const size_t num_points,
@@ -222,24 +206,7 @@ public:
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
-  /**
-   * @brief Array based version of ray_fire query
-   *
-   * This method performs a set of ray fire queries on a batch of rays defined by their origins and directions.
-   * It computes the intersection distances and surface IDs for each ray in the batch. With GPRT ray tracing
-   * this launches the RT pipeline with the number of rays provided.
-   *
-   * @param[in] tree The TreeID of the volume we are querying against
-   * @param[in] origins An array of Position objects representing the starting points of the rays
-   * @param[in] directions An array of Direction objects representing the directions of the rays
-   * @param[in] num_rays The number of rays to be processed in the batch
-   * @param[out] hitDistances An output array to store the computed intersection distances for each ray
-   * @param[out] surfaceIDs An output array to store the MeshIDs of the surfaces hit by each ray
-   * @param[in] dist_limit (optional) maximum distance to consider for intersections
-   * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
-   * @param[in] exclude_primitives (optional) vector of surface element MeshIDs to exclude from intersection tests
-   * @return Void. Outputs stored in hitDistances and surfaceIDs arrays
-   */  
+  
   virtual void ray_fire(TreeID tree,
                         const Position* origins,
                         const Direction* directions,
@@ -252,26 +219,18 @@ public:
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
-  /**
-   * @brief Array based version of ray_fire query which assumes ray buffers are already populated on device
-   *
-   * This method assumes that ray buffers have been externally populated and simply calls the ray tracing pipeline
-   * to perform a set of ray fire queries on a batch of rays defined by their origins and directions.
-   * It computes the intersection distances and surface IDs for each ray in the batch. With GPRT ray tracing
-   * this launches the RT pipeline with the number of rays provided. The results are stored in the output arrays on device.
-   *
-   * @param[in] tree The TreeID of the volume we are querying against
-   * @param[in] num_rays The number of rays to be processed in the batch
-   * @param[in] dist_limit (optional) maximum distance to consider for intersections
-   * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
-   * @return Void. Outputs stored in dblHit buffer on device
-   */  
+
   virtual void ray_fire_prepared(const size_t num_rays,
                                  const double dist_limit = INFTY,
                                  HitOrientation orientation = HitOrientation::EXITING) 
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }  
+
+  virtual void point_in_volume_prepared(const size_t num_points) 
+  {
+    fatal_error("GPU ray tracing not supported with this RayTracer backend");
+  }
 
   /**
    * @brief Check whether the current ray buffer capacity is sufficient for the number of rays requested
@@ -301,7 +260,6 @@ public:
    * 2. XDG passes device pointers to the callback
    * 3. User's callback populates the buffers using their preferred compute kernel/shader
    * 4. User's callback returns (XDG assumes buffers are now populated)
-   * 5. Call xdg::ray_fire_prepared() to trace the populated rays
    *
    * This avoids unnecessary host-device transfers by allowing users to write directly
    * to XDG's device buffers without any host-side transfers.

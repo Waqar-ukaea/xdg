@@ -156,9 +156,31 @@ void ray_fire(MeshID volume,
               HitOrientation orientation = HitOrientation::EXITING,
               std::vector<MeshID>* const exclude_primitives = nullptr);
 
+/**
+ * @brief Call ray fire on pre-populated ray buffers
+ *
+ * This method performs a set of ray fire queries on a set of rays that have already been populated on device
+ * via the external ray population callback method. With GPRT ray tracing this launches the RT pipeline with the number of rays provided.
+ *
+ * @param[in] num_rays The number of rays to be processed in the batch
+ * @param[in] dist_limit (optional) maximum distance to consider for intersections
+ * @param[in] orientation (optional) flag to consider whether Entering/Exiting hits should be rejected. Defaults to EXITING
+ * @return Void. Outputs stored in dblHit buffer on device. And can be recovered on host via transfer_hits_buffer_to_host method
+ */ 
 void ray_fire_prepared(const size_t num_rays,
                        const double dist_limit = INFTY,
                        HitOrientation orientation = HitOrientation::EXITING);
+
+/**
+ * @brief Call point_in_volume on pre-populated ray buffers
+ *
+ * This method performs a set of point_in_volume queries on a set of points that have already been populated on device
+ * via the external ray population callback method. With GPRT ray tracing this launches the RT pipeline with the number of points provided.
+ *
+ * @param[in] num_points The number of points to be processed in the batch
+ * @return Void. Outputs stored in dblHit buffer on device. And can be recovered on host via transfer_hits_buffer_to_host method
+ */ 
+void point_in_volume_prepared(const size_t num_points);
 
 std::pair<double, MeshID> closest(MeshID volume,
                                   const Position& origin) const;
