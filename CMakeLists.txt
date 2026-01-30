@@ -159,7 +159,12 @@ src/gprt/ray_tracer.cpp
 list(APPEND xdg_device_codes
 dbl_deviceCode
 )
+endif()
 
+if (XDG_ENABLE_DEEPEE_RT)
+list(APPEND xdg_sources
+src/DeePeeRT/ray_tracer.cpp
+)
 endif()
 
 if (XDG_ENABLE_LIBMESH)
