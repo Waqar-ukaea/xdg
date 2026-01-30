@@ -101,7 +101,7 @@ private:
       // setup element adjacenty data
       // TODO: support other element types
       Range elements;
-      rval = mbi->get_entities_by_type(0, entity_type, elements, true);
+      rval = mbi->get_entities_by_type(mbi->get_root_set(), entity_type, elements, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get MOAB element adjacencies");
 
       const auto& ord = ordering[entity_type];
@@ -179,7 +179,7 @@ private:
 
       // setup face connectivity data
 
-      rval = mbi->get_entities_by_type(0, entity_type, entity_range, true);
+      rval = mbi->get_entities_by_type(mbi->get_root_set(), entity_type, entity_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements for the given entity type");
       num_entities = entity_range.size();
 
@@ -235,7 +235,7 @@ private:
     void setup(Interface* mbi) {
       ErrorCode rval;
       // setup vertices
-      rval = mbi->get_entities_by_dimension(0, 0, vertex_range, true);
+      rval = mbi->get_entities_by_dimension(mbi->get_root_set(), 0, vertex_range, true);
       MB_CHK_SET_ERR_CONT(rval, "Failed to get all elements of dimension 0 (vertices)");
       num_vertices = vertex_range.size();
 
