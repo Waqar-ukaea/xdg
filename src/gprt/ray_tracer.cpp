@@ -596,12 +596,6 @@ void GPRTRayTracer::update_tlas_table_()
   }
 }
 
-DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
-{
-  check_rayhit_buffer_capacity(N);
-  return rayHitBuffers_.view;
-}
-
 void GPRTRayTracer::populate_rays_external(size_t numRays,
                                            const RayPopulationCallback& callback)
 {

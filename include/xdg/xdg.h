@@ -212,11 +212,6 @@ Direction surface_normal(MeshID surface,
     ray_tracing_interface_ = ray_tracing_interface;
   }
 
-  DeviceRayHitBuffers get_device_rayhit_buffers(const size_t requiredCapacity)
-  {
-    return ray_tracing_interface()->get_device_rayhit_buffers(requiredCapacity);
-  }
-
   void populate_rays_external(size_t numRays,
                               const RayPopulationCallback& callback)
   {

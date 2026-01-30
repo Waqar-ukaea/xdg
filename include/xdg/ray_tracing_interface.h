@@ -241,15 +241,6 @@ public:
   }
 
   /**
-   * @brief return device pointers to ray and hit buffers for GPU ray tracing
-   * @return DeviceRayHitBuffers struct containing device pointers to ray and hit buffers
-   */
-  virtual DeviceRayHitBuffers get_device_rayhit_buffers(const size_t num_rays) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-    return {};
-  }
-
-  /**
    * @brief Allocate device ray buffers and populate them via a user-provided callback
    *
    * This method allows downstream applications to populate ray buffers using any compute

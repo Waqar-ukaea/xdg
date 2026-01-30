@@ -122,9 +122,6 @@ class GPRTRayTracer : public RayTracer {
     // Check to see if buffers large enough and resize if not
     void check_rayhit_buffer_capacity(const size_t N) override;
 
-    // Method to expose device ray and hit buffers for external population
-    DeviceRayHitBuffers get_device_rayhit_buffers(const size_t N) override;
-
     /**
      * @brief Allocate device buffers and invoke a callback to populate them
      *
@@ -140,16 +137,6 @@ class GPRTRayTracer : public RayTracer {
     GPRTContext context()
     {
       return context_;
-    }
-
-    SurfaceAccelerationStructure* tlas_handle_device_ptr() const
-    {
-      return gprtBufferGetDevicePointer(tlas_handle_buffer_);
-    }
-
-    size_t tlas_handle_count() const
-    {
-      return tlas_handles_.size();
     }
 
   private:
