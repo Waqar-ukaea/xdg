@@ -349,31 +349,44 @@ TEST_CASE("MOAB Element ID and Index Mapping")
       REQUIRE(mapped_idx == static_cast<int>(idx));
     }
 
-    //     // modify the vertex global IDs to be non-contiguous
-    // next_id = 0;
-    // std::vector<MeshID> modified_vertex_ids;
-    // moab::Range vertex_range;
-    // mbi->get_entities_by_type(0, moab::MBVERTEX, vertex_range);
-    // for (const auto& vertex : vertex_range) {
-    //   if (next_id % 50 == 0) {
-    //     mbi->delete_entities(&vertex, 1);
-    //     next_id++;
-    //     continue;
-    //   }
-    //   next_id++;
-    // }
+  }
 
-    // // reset the direct access manager to update vertex data
-    // mesh_manager->mb_direct()->update();
+  {
+    std::shared_ptr<MOABMeshManager> mesh_manager = std::make_shared<MOABMeshManager>();
+    mesh_manager->load_file("jezebel.h5m");
 
-    // size_t num_vertices = mesh_manager->num_vertices();
-    // REQUIRE(num_vertices == modified_vertex_ids.size());
-    // for (size_t idx = 0; idx < num_vertices; ++idx) {
-    //   MeshID expected_id = modified_vertex_ids[idx];
-    //   MeshID vertex_id = mesh_manager->vertex_id(idx);
-    //   REQUIRE(vertex_id == expected_id);
-    //   int mapped_idx = mesh_manager->vertex_index(vertex_id);
-    //   REQUIRE(mapped_idx == static_cast<int>(idx));
-    // }
+    moab::Interface* mbi = mesh_manager->moab_interface();
+
+    moab::Range vertex_range;
+    mbi->get_entities_by_type(0, moab::MBVERTEX, vertex_range);
+    std::vector<MeshID> modified_vertex_ids;
+    int next_id = 0;
+    for (const auto& vertex : vertex_range) {
+      if (next_id % 50 == 0) {
+        // delete any elements adjacent to this vertex to avoid dangling references
+        moab::Range adj_elems;
+        mbi->get_adjacencies(&vertex, 1, 3, true, adj_elems);
+        for (const auto& adj_elem : adj_elems) {
+          mbi->delete_entities(&adj_elem, 1);
+        }
+        mbi->delete_entities(&vertex, 1);
+        next_id++;
+        continue;
+      }
+      modified_vertex_ids.push_back(mbi->id_from_handle(vertex));
+      next_id++;
+    }
+
+    mesh_manager->init();
+
+    size_t num_vertices = mesh_manager->num_vertices();
+    REQUIRE(num_vertices == modified_vertex_ids.size());
+    for (size_t idx = 0; idx < num_vertices; ++idx) {
+      MeshID expected_id = modified_vertex_ids[idx];
+      MeshID vertex_id = mesh_manager->vertex_id(idx);
+      REQUIRE(vertex_id == expected_id);
+      int mapped_idx = mesh_manager->vertex_index(vertex_id);
+      REQUIRE(mapped_idx == static_cast<int>(idx));
+    }
   }
 }

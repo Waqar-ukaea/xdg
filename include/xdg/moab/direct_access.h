@@ -228,6 +228,7 @@ private:
       element_stride = -1;
       first_elements.clear();
       vconn.clear();
+      entity_range.clear();
     }
   };
 
@@ -267,6 +268,7 @@ private:
       ty.clear();
       tz.clear();
       first_vertices.clear();
+      vertex_range.clear();
     }
 
     //! \brief Set the coordinates of a vertex based on an index into a contiguous block of memory
