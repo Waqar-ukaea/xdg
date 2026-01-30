@@ -113,3 +113,15 @@ inline void make_rays(size_t N, std::vector<xdg::Position>& origins, std::vector
   }
 }
 
+inline void make_points(size_t N, std::vector<xdg::Position>& points, std::vector<xdg::Direction>& directions)
+{
+  points.resize(N);
+  directions.resize(N);
+  for (size_t i = 0; i < N; ++i) {
+    // evens inside (origin), odds just outside +X
+    points[i] = (i % 2 == 0) ? xdg::Position{0.0, 0.0, 0.0} : xdg::Position{5.1, 0.0, 0.0};
+    // alternate ±X directions
+    directions[i] = (i % 2 == 0) ? xdg::Direction{1.0, 0.0, 0.0}
+                                 : xdg::Direction{-1.0, 0.0, 0.0};
+  }
+}

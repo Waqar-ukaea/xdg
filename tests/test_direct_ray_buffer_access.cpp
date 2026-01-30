@@ -21,6 +21,50 @@ using namespace xdg::test;
 
 extern GPRTProgram test_direct_ray_buffer_access_deviceCode;
 
+static RayPopulationCallback make_populate_callback(const std::vector<Position>& origins,
+                                                    const std::vector<Direction>& directions,
+                                                    GPRTContext context,
+                                                    GPRTComputeOf<ExternalRayParams> packRays,
+                                                    MeshID volume_id) {
+  return [&origins, &directions, context, packRays, volume_id]
+    (const DeviceRayHitBuffers& buffer, size_t numRays) {
+    REQUIRE(origins.size() >= numRays);
+    REQUIRE(directions.size() >= numRays);
+
+    // Convert to double3 for use on GPU
+    std::vector<double3> origins_device(numRays);
+    std::vector<double3> directions_device(numRays);
+    for (size_t i = 0; i < numRays; ++i) {
+      origins_device[i] = {origins[i].x, origins[i].y, origins[i].z};
+      directions_device[i] = {directions[i].x, directions[i].y, directions[i].z};
+    }
+
+    auto origins_buffer = gprtDeviceBufferCreate<double3>(context, numRays, origins_device.data());
+    auto directions_buffer = gprtDeviceBufferCreate<double3>(context, numRays, directions_device.data());
+
+    constexpr uint32_t threads_per_group = 256;
+    const uint32_t groups = static_cast<uint32_t>((numRays + threads_per_group - 1) / threads_per_group);
+
+    ExternalRayParams params = {};
+    params.xdgRays = static_cast<dblRay*>(buffer.rayDevPtr);
+    params.origins = gprtBufferGetDevicePointer(origins_buffer);
+    params.directions = gprtBufferGetDevicePointer(directions_buffer);
+    params.num_rays = static_cast<uint32_t>(numRays);
+    params.total_threads = groups * threads_per_group;
+    params.volume_mesh_id = volume_id;
+    params.enabled = 1u;
+
+    gprtComputeLaunch(packRays,
+                      { groups, 1, 1 },
+                      { threads_per_group, 1, 1 },
+                      params);
+    gprtComputeSynchronize(context);
+
+    gprtBufferDestroy(origins_buffer);
+    gprtBufferDestroy(directions_buffer);
+  };
+}
+
 // This is a GPU only test - skip if no GPU ray tracing backends are enabled
 TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
                    GPRT_Raytracer)
@@ -65,43 +109,11 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
                   expected_surfaces.data());
 
     // Create callback to populate rays on device
-    RayPopulationCallback populate_callback = [&volume_id, &origins, &directions, &context, &packRays]
-      (const DeviceRayHitBuffers& buffer, size_t numRays) {
-      REQUIRE(origins.size() >= numRays);
-      REQUIRE(directions.size() >= numRays);
-
-      // Convert to double3 for use on GPU
-      std::vector<double3> origins_device(numRays);
-      std::vector<double3> directions_device(numRays);
-      for (size_t i = 0; i < numRays; ++i) {
-        origins_device[i] = {origins[i].x, origins[i].y, origins[i].z};
-        directions_device[i] = {directions[i].x, directions[i].y, directions[i].z};
-      }
-
-      auto origins_buffer = gprtDeviceBufferCreate<double3>(context, numRays, origins_device.data());
-      auto directions_buffer = gprtDeviceBufferCreate<double3>(context, numRays, directions_device.data());
-
-      constexpr uint32_t threads_per_group = 256;
-      const uint32_t groups = static_cast<uint32_t>((numRays + threads_per_group - 1) / threads_per_group);
-
-      ExternalRayParams params = {};
-      params.xdgRays = static_cast<dblRay*>(buffer.rayDevPtr);
-      params.origins = gprtBufferGetDevicePointer(origins_buffer);
-      params.directions = gprtBufferGetDevicePointer(directions_buffer);
-      params.num_rays = static_cast<uint32_t>(numRays);
-      params.total_threads = groups * threads_per_group;
-      params.volume_mesh_id = volume_id;
-      params.enabled = 1u;
-
-      gprtComputeLaunch(packRays,
-                        { groups, 1, 1 },
-                        { threads_per_group, 1, 1 },
-                        params);
-      gprtComputeSynchronize(context);
-
-      gprtBufferDestroy(origins_buffer);
-      gprtBufferDestroy(directions_buffer);
-    };
+    RayPopulationCallback populate_callback = make_populate_callback(origins,
+                                                                      directions,
+                                                                      context,
+                                                                      packRays,
+                                                                      volume_id);
       
     // Populate rays via external API
     xdg->populate_rays_external(N, populate_callback);
@@ -116,6 +128,66 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
       if (expected_surfaces[i] != ID_NONE) {
         REQUIRE_THAT(hits[i].distance, Catch::Matchers::WithinAbs(expected_distances[i], 1e-6));
       }
+    }
+
+    gprtComputeDestroy(packRays);
+    gprtModuleDestroy(module);
+  }
+}
+
+TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]",
+                   GPRT_Raytracer)
+{
+  constexpr auto rt_backend = TestType::value;
+
+  DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
+    check_ray_tracer_supported(rt_backend);
+
+    auto rti = create_raytracer(rt_backend);
+    REQUIRE(rti);
+
+    auto mm = std::make_shared<MeshMock>(false);
+    mm->init();
+    REQUIRE(mm->mesh_library() == MeshLibrary::MOCK);
+
+    auto xdg = std::make_shared<XDG>();
+    xdg->set_mesh_manager_interface(mm);
+    xdg->set_ray_tracing_interface(rti);
+    xdg->prepare_raytracer();
+
+    std::vector<Position> points;
+    std::vector<Direction> directions;
+    size_t N = 64;
+    make_points(N, points, directions);
+
+    auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(rti);
+    REQUIRE(gprt_rt);
+
+    const MeshID volume_id = mm->volumes()[0];
+    GPRTContext context = gprt_rt->context();
+    GPRTModule module = gprtModuleCreate(context, test_direct_ray_buffer_access_deviceCode);
+    auto packRays = gprtComputeCreate<ExternalRayParams>(context, module, "pack_external_rays");
+
+    std::vector<uint8_t> expected_piv(N, 0);
+    for (size_t i = 0; i < N; ++i) {
+      expected_piv[i] = static_cast<uint8_t>(xdg->point_in_volume(volume_id, points[i], &directions[i]));
+    }
+
+    RayPopulationCallback populate_callback = make_populate_callback(points,
+                                                                      directions,
+                                                                      context,
+                                                                      packRays,
+                                                                      volume_id);
+    xdg->populate_rays_external(N, populate_callback);
+
+    xdg->point_in_volume_prepared(volume_id, N);
+    std::vector<dblHit> hits;
+    xdg->transfer_hits_buffer_to_host(N, hits);
+
+    REQUIRE(hits.size() == N);
+    for (size_t i = 0; i < N; ++i) {
+      const auto expected = expected_piv[i] ? xdg::PointInVolume::INSIDE : xdg::PointInVolume::OUTSIDE;
+      REQUIRE(hits[i].piv == expected);
     }
 
     gprtComputeDestroy(packRays);

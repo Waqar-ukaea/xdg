@@ -12,21 +12,6 @@
 using namespace xdg;
 using namespace xdg::test;
 
-static void make_points(size_t N,
-                        std::vector<Position>& points,
-                        std::vector<Direction>& directions) 
-{
-  points.resize(N);
-  directions.resize(N);
-  for (size_t i = 0; i < N; ++i) {
-    // evens inside (origin), odds just outside +X
-    points[i] = (i % 2 == 0) ? xdg::Position{0,0,0} : xdg::Position{5.1,0,0};
-    // alternate ±X directions
-    directions[i] = (i % 2 == 0) ? xdg::Direction{ 1,0,0}
-                                 : xdg::Direction{-1,0,0};
-  }
-}
-
 // ---------- single test, sections per backend --------------------------------
 
 TEMPLATE_TEST_CASE("Point-in-volume on MeshMock", "[piv][mock]",
@@ -160,4 +145,3 @@ TEMPLATE_TEST_CASE("Batch API Point-in-volume on MeshMock", "[piv][mock][batch]"
     }
   }
 }
-
