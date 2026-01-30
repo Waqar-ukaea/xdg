@@ -160,4 +160,3 @@ TEMPLATE_TEST_CASE("Batch API Point-in-volume on MeshMock", "[piv][mock][batch]"
     }
   }
 }
-
