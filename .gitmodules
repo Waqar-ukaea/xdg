@@ -20,3 +20,7 @@
 [submodule "vendor/GPRT"]
 	path = vendor/GPRT
 	url = https://github.com/gprt-org/GPRT.git
+[submodule "vendor/deepeeRT"]
+	path = vendor/deepeeRT
+	url = https://github.com/ingowald/deepeeRT.git
+	branch = iw/openmp

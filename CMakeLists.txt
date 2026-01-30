@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(openmc C CXX)
 
-option(XDG_ENABLE_MOAB    "Enable support for the MOAB mesh library"          ON)
-option(XDG_ENABLE_MFEM    "Enable support for the MFEM mesh library"         OFF)
-option(XDG_ENABLE_LIBMESH "Enable support for the libMesh mesh library"      OFF)
-option(XDG_LINK_MPI       "Link with MPI (for dependency compatibility)"     OFF)
-option(XDG_ENABLE_EMBREE  "Enable support for the Embree ray tracing library" ON)
-option(XDG_ENABLE_GPRT    "Enable support for the GPRT ray tracing library"  OFF)
-option(XDG_BUILD_TESTS    "Enable C++ unit testing"                           ON)
-option(XDG_BUILD_TOOLS    "Enable tools and miniapps"                         ON)
+option(XDG_ENABLE_MOAB      "Enable support for the MOAB mesh library"             ON)
+option(XDG_ENABLE_MFEM      "Enable support for the MFEM mesh library"            OFF)
+option(XDG_ENABLE_LIBMESH   "Enable support for the libMesh mesh library"         OFF)
+option(XDG_LINK_MPI         "Link with MPI (for dependency compatibility)"        OFF)
+option(XDG_ENABLE_EMBREE    "Enable support for the Embree ray tracing library"    ON)
+option(XDG_ENABLE_GPRT      "Enable support for the GPRT ray tracing library"     OFF)
+option(XDG_ENABLE_DEEPEE_RT "Enable support for the DeePeeRT ray tracing library" OFF)
+option(XDG_BUILD_TESTS      "Enable C++ unit testing"                              ON)
+option(XDG_BUILD_TOOLS      "Enable tools and miniapps"                            ON)
 
 # Set version numbers
 set(XDG_VERSION_MAJOR 0)
@@ -105,17 +106,26 @@ if (NOT XDG_ENABLE_MOAB AND NOT XDG_ENABLE_LIBMESH)
 endif()
 
 # Ensure at least one ray tracing backend is enabled
-if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT)
+if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT AND NOT XDG_ENABLE_DEEPEE_RT)
   message(FATAL_ERROR
     "No ray tracing backend enabled. Enable at least one of:\n"
     "  -DXDG_ENABLE_EMBREE=ON\n"
-    "  -DXDG_ENABLE_GPRT=ON")
+    "  -DXDG_ENABLE_GPRT=ON\n"
+    "  -DXDG_ENABLE_DEEPEE_RT=ON")
 endif()
 
 # GPRT
 set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
 if (XDG_ENABLE_GPRT)
   add_subdirectory(vendor/GPRT)
+endif()
+
+# DeePeeRT
+if (XDG_ENABLE_DEEPEE_RT)
+  if (NOT DEFINED DEEPEE_RT_OMP)
+    set(DEEPEE_RT_OMP ON CACHE BOOL "Enable DeePeeRT OpenMP build" )
+  endif()
+  add_subdirectory(vendor/deepeeRT EXCLUDE_FROM_ALL)
 endif()
 
 list(APPEND xdg_sources
@@ -254,6 +264,10 @@ if (XDG_ENABLE_GPRT)
   target_link_options(xdg INTERFACE -Wl,--unresolved-symbols=ignore-in-shared-libs)
 endif()
 
+if (XDG_ENABLE_DEEPEE_RT)
+  target_compile_definitions(xdg PUBLIC XDG_ENABLE_DEEPEE_RT)
+endif()
+
 # ==========================
 # Link ray tracing libraries
 # ==========================
@@ -276,6 +290,10 @@ if (XDG_ENABLE_GPRT)
     target_link_libraries(xdg ${device_code})
   endforeach()
 target_link_libraries(xdg $<BUILD_INTERFACE:gprt>)
+endif()
+
+if (XDG_ENABLE_DEEPEE_RT)
+  target_link_libraries(xdg DeePeeRT::DeePeeRT)
 endif()
 
 # ===================
