@@ -9,9 +9,6 @@
 #include "xdg/mesh_managers.h"
 
 #include "xdg/ray_tracers.h"
-#ifdef XDG_ENABLE_GPRT
-#include "xdg/gprt/ray.h"
-#endif
 
 namespace xdg {
 
@@ -59,11 +56,7 @@ void XDG::prepare_volume_for_raytracing(MeshID volume) {
 void XDG::transfer_hits_buffer_to_host(const size_t num_rays,
                                        std::vector<dblHit>& hits)
 {
-  auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(ray_tracing_interface());
-  if (!gprt_rt) {
-    fatal_error("transfer_hits_buffer_to_host is only supported with the GPRT ray tracer");
-  }
-  gprt_rt->download_hits(num_rays, hits);
+  ray_tracing_interface()->download_hits(num_rays, hits);
 }
 #endif
 
