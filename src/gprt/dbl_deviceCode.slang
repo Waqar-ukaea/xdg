@@ -72,7 +72,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     payload.tlas = world;
 
     if (ray.enabled == 1u) {
-        TraceRay(PC.volume_accel, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+        TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
     }
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
@@ -94,8 +94,9 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     rayDesc.TMin = float(PC.tMin); 
     rayDesc.TMax = float(PC.tMax); 
 
-    SurfaceAccelerationStructure world = PC.volume_accel;
-
+    int mesh_id = ray.volume_mesh_id;
+    // Recover the TLAS we are tracing against for this ray
+    SurfaceAccelerationStructure world = record.meshid_to_accel_address[mesh_id];
     // Pass the ray's origin and direction to the payload
     payload.surf_id = -1;
     payload.tlas = world;

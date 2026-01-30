@@ -289,6 +289,12 @@ XDG::ray_fire_prepared(const size_t num_rays,
   return ray_tracing_interface()->ray_fire_prepared(num_rays, dist_limit, orientation);
 }
 
+void 
+XDG::point_in_volume_prepared(const size_t num_points) 
+{
+  return ray_tracing_interface()->point_in_volume_prepared(num_points);
+}
+
 std::pair<double, MeshID> XDG::closest(MeshID volume,
                                        const Position& origin) const
 {
