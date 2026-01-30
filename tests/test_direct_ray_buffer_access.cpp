@@ -180,7 +180,7 @@ TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]"
                                                                       volume_id);
     xdg->populate_rays_external(N, populate_callback);
 
-    xdg->point_in_volume_prepared(volume_id, N);
+    xdg->point_in_volume_prepared(N);
     std::vector<dblHit> hits;
     xdg->transfer_hits_buffer_to_host(N, hits);
 
