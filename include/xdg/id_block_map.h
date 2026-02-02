@@ -43,11 +43,6 @@ public:
     {
       if (ids.size() == 0) return;
 
-      // check that IDs are sorted
-      if (!std::is_sorted(ids.begin(), ids.end())) {
-      fatal_error("IDBlockMapping constructor requires sorted IDs");
-      }
-
       size_t n = ids.size();
       size_t block_start = 0;
       Index current_idx = 0;
@@ -63,6 +58,9 @@ public:
 
           current_idx += block.count;
           block_start = i;
+        }
+        if (i < n && converter(ids[i]) <= converter(ids[i-1])) {
+          fatal_error("IDs must be unique and monotonically increasing");
         }
       }
     }
