@@ -9,9 +9,6 @@
 #include "xdg/mesh_managers.h"
 
 #include "xdg/ray_tracers.h"
-#ifdef XDG_ENABLE_GPRT
-#include "xdg/gprt/ray.h"
-#endif
 
 namespace xdg {
 
@@ -36,11 +33,11 @@ XDG::XDG(std::shared_ptr<MeshManager> mesh_manager, RTLibrary ray_tracing_lib)
     #endif
 
     case RTLibrary::DEEPEE_RT:
-    #ifdef XDG_ENABLE_DEEPEE_RT
+    #ifdef XDG_ENABLE_DEEPEERT
       set_ray_tracing_interface(std::make_shared<DeePeeRTRayTracer>());
       break;
     #else
-      fatal_error("This build was not compiled with DeePeeRT support (XDG_ENABLE_DEEPEE_RT=OFF).");
+      fatal_error("This build was not compiled with DeePeeRT support (XDG_ENABLE_DEEPEERT=OFF).");
     #endif
   }
 }
@@ -67,11 +64,7 @@ void XDG::prepare_volume_for_raytracing(MeshID volume) {
 void XDG::transfer_hits_buffer_to_host(const size_t num_rays,
                                        std::vector<dblHit>& hits)
 {
-  auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(ray_tracing_interface());
-  if (!gprt_rt) {
-    fatal_error("transfer_hits_buffer_to_host is only supported with the GPRT ray tracer");
-  }
-  gprt_rt->download_hits(num_rays, hits);
+  ray_tracing_interface()->download_hits(num_rays, hits);
 }
 #endif
 
@@ -107,7 +100,7 @@ std::shared_ptr<XDG> XDG::create(MeshLibrary mesh_lib, RTLibrary ray_tracing_lib
     #ifdef XDG_ENABLE_GPRT
     if (ray_tracing_lib == RTLibrary::GPRT) return std::make_shared<GPRTRayTracer>();
     #endif
-    #ifdef XDG_ENABLE_DEEPEE_RT
+    #ifdef XDG_ENABLE_DEEPEERT
     if (ray_tracing_lib == RTLibrary::DEEPEE_RT) return std::make_shared<DeePeeRTRayTracer>();
     #endif
 
@@ -119,8 +112,8 @@ std::shared_ptr<XDG> XDG::create(MeshLibrary mesh_lib, RTLibrary ray_tracing_lib
     #ifdef XDG_ENABLE_GPRT
     msg += " GPRT";
     #endif
-    #ifdef XDG_ENABLE_DEEPEE_RT
-    msg += " DEEPEE_RT";
+    #ifdef XDG_ENABLE_DEEPEERT
+    msg += " DEEPEERT";
     #endif
     fatal_error(msg);
   };
