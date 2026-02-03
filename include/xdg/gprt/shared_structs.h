@@ -8,7 +8,6 @@
 struct GPRTPrimitiveRef
 {
   int id; // ID of the primitive
-  int sense;
 };
 
 
@@ -19,14 +18,9 @@ struct DPTriangleGeomData {
   uint3 *index;  // index buffer
   double3 *normals; // normals buffer
   int surf_id;
-  int2 vols;
-  int forward_vol;
-  int reverse_vol;
   int* meshid_to_sense; // MeshID -> sense (+1 forward, -1 reverse)
   xdg::dblRay *ray; // double precision rays
   xdg::HitOrientation hitOrientation;
-  int forward_tree; // TreeID of the forward volume
-  int reverse_tree; // TreeID of the reverse volume
   GPRTPrimitiveRef* primitive_refs;
   int num_faces; // Number of faces in the geometry
 };
@@ -43,8 +37,6 @@ struct dblRayGenData {
 struct dblRayFirePushConstants {
   double tMax;
   double tMin;
-  SurfaceAccelerationStructure volume_accel; 
-  int volume_tree;
   xdg::HitOrientation hitOrientation;
 };
 
