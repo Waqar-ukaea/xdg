@@ -125,6 +125,9 @@ class GPRTRayTracer : public RayTracer {
     // Check to see if buffers large enough and resize if not
     void check_rayhit_buffer_capacity(const size_t N) override;
 
+    // Method to expose device ray and hit buffers for external population
+    DeviceRayHitBuffers get_device_rayhit_buffers(const size_t N) override;
+
     /**
      * @brief Allocate device buffers and invoke a callback to populate them
      *
