@@ -200,29 +200,6 @@ public:
 
   // GPU Ray Tracing Support
 
-  virtual void point_in_volume(TreeID tree,
-                               const Position* points,
-                               const size_t num_points,
-                               uint8_t* results,
-                               const Direction* directions = nullptr,
-                               std::vector<MeshID>* exclude_primitives = nullptr) 
-  {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-  
-  virtual void ray_fire(TreeID tree,
-                        const Position* origins,
-                        const Direction* directions,
-                        const size_t num_rays,
-                        double* hitDistances,
-                        MeshID* surfaceIDs,
-                        const double dist_limit = INFTY,
-                        HitOrientation orientation = HitOrientation::EXITING,
-                        std::vector<MeshID>* const exclude_primitives = nullptr)
-  {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-
   virtual void ray_fire_prepared(const size_t num_rays,
                                  const double dist_limit = INFTY,
                                  HitOrientation orientation = HitOrientation::EXITING) 
@@ -274,12 +251,7 @@ public:
                                       const RayPopulationCallback& callback) {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
-
-  virtual void transfer_hits_buffer_to_host(const size_t num_rays,
-                                            std::vector<dblHit>& hits) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-
+  
 protected:
   // Common functions across RayTracers
   const double bounding_box_bump(const std::shared_ptr<MeshManager> mesh_manager, MeshID volume_id); // return a bump value based on the size of a bounding box (minimum 1e-3). Should this be a part of mesh_manager?

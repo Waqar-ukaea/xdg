@@ -79,28 +79,12 @@ class GPRTRayTracer : public RayTracer {
                         const Direction* direction = nullptr,
                         const std::vector<MeshID>* exclude_primitives = nullptr) const override;
 
-    void point_in_volume(TreeID tree,
-                         const Position* points,
-                         const size_t num_points,
-                         uint8_t* results,
-                         const Direction* directions = nullptr, 
-                         std::vector<MeshID>* exclude_primitives = nullptr) override;
-
     std::pair<double, MeshID> ray_fire(TreeID scene,
                                       const Position& origin,
                                       const Direction& direction,
                                       const double dist_limit = INFTY,
                                       HitOrientation orientation = HitOrientation::EXITING,
                                       std::vector<MeshID>* const exclude_primitives = nullptr) override;
-    void ray_fire(TreeID tree,
-                  const Position* origins,
-                  const Direction* directions,
-                  const size_t num_rays,
-                  double* hitDistances,
-                  MeshID* surfaceIDs,
-                  const double dist_limit = INFTY,
-                  HitOrientation orientation = HitOrientation::EXITING,
-                  std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
     void ray_fire_prepared(const size_t num_rays,
                            const double dist_limit = INFTY,
@@ -138,7 +122,7 @@ class GPRTRayTracer : public RayTracer {
                                 const RayPopulationCallback& callback) override;
 
     void transfer_hits_buffer_to_host(const size_t num_rays,
-                                      std::vector<dblHit>& hits) override;
+                                      std::vector<dblHit>& hits);
 
     GPRTContext context()
     {

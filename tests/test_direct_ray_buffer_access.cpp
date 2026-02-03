@@ -125,7 +125,7 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
 
     xdg->ray_fire_prepared(N);
     std::vector<dblHit> hits;
-    xdg->transfer_hits_buffer_to_host(N, hits);
+    gprt_rt->transfer_hits_buffer_to_host(N, hits);
 
     REQUIRE(hits.size() == N);
     for (size_t i = 0; i < N; ++i) {
@@ -187,7 +187,7 @@ TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]"
 
     xdg->point_in_volume_prepared(N);
     std::vector<dblHit> hits;
-    xdg->transfer_hits_buffer_to_host(N, hits);
+    gprt_rt->transfer_hits_buffer_to_host(N, hits);
 
     REQUIRE(hits.size() == N);
     for (size_t i = 0; i < N; ++i) {
