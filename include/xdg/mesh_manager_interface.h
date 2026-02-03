@@ -95,7 +95,7 @@ public:
   { return vertex_id_map_.index_to_id(vertex_idx); }
 
   //! \brief Return the index of a vertex given its ID in the mesh
-  virtual int vertex_index(MeshID vertex) const
+  virtual MeshIndex vertex_index(MeshID vertex) const
   { return vertex_id_map_.id_to_index(vertex); }
 
   // Return a pair of {vertices, connectivity} for a given surface in the mesh
@@ -112,7 +112,7 @@ public:
   //! \brief Convert an element's index in the mesh to its ID
   //! \param element The element ID
   //! \return The index of the element in the mesh
-  virtual int element_index(MeshID element) const
+  virtual MeshIndex element_index(MeshID element) const
   { return volume_element_id_map_.id_to_index(element); }
 
   //! \brief Get the adjacent element across a given face
