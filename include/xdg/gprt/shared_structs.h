@@ -22,6 +22,7 @@ struct DPTriangleGeomData {
   int2 vols;
   int forward_vol;
   int reverse_vol;
+  int* meshid_to_sense; // MeshID -> sense (+1 forward, -1 reverse)
   xdg::dblRay *ray; // double precision rays
   xdg::HitOrientation hitOrientation;
   int forward_tree; // TreeID of the forward volume
