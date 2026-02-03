@@ -56,7 +56,7 @@ void XDG::prepare_volume_for_raytracing(MeshID volume) {
 void XDG::transfer_hits_buffer_to_host(const size_t num_rays,
                                        std::vector<dblHit>& hits)
 {
-  ray_tracing_interface()->download_hits(num_rays, hits);
+  ray_tracing_interface()->transfer_hits_buffer_to_host(num_rays, hits);
 }
 #endif
 

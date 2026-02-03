@@ -109,7 +109,10 @@ class GPRTRayTracer : public RayTracer {
     void point_in_volume_prepared(const size_t num_rays) override;
 
     std::pair<double, MeshID> closest(TreeID scene,
-                                      const Position& origin) override {};
+                                      const Position& origin) override {
+      fatal_error("Closest queries are not currently supported with GPRT ray tracer");
+      return {INFTY, ID_NONE};
+    };
 
     bool occluded(TreeID scene,
                   const Position& origin,
@@ -131,8 +134,8 @@ class GPRTRayTracer : public RayTracer {
     void populate_rays_external(size_t numRays,
                                 const RayPopulationCallback& callback) override;
 
-    void download_hits(const size_t num_rays,
-                       std::vector<dblHit>& hits);
+    void transfer_hits_buffer_to_host(const size_t num_rays,
+                                      std::vector<dblHit>& hits) override;
 
     GPRTContext context()
     {
