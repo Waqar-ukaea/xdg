@@ -23,35 +23,38 @@ extern GPRTProgram test_direct_ray_buffer_access_deviceCode;
 
 static RayPopulationCallback make_populate_callback(const std::vector<Position>& origins,
                                                     const std::vector<Direction>& directions,
+                                                    const std::vector<MeshID>& volume_ids,
                                                     GPRTContext context,
-                                                    GPRTComputeOf<ExternalRayParams> packRays,
-                                                    MeshID volume_id) {
-  return [&origins, &directions, context, packRays, volume_id]
-    (const DeviceRayHitBuffers& buffer, size_t numRays) {
-    REQUIRE(origins.size() >= numRays);
-    REQUIRE(directions.size() >= numRays);
+                                                    GPRTComputeOf<ExternalRayParams> packRays) {
+  return [&origins, &directions, volume_ids, context, packRays]
+    (const DeviceRayHitBuffers& buffer, size_t num_rays) {
+
+    // When passing arrays to the callback, ensure they are the correct size
+    assert(origins.size() == num_rays);
+    assert(directions.size() == num_rays); 
 
     // Convert to double3 for use on GPU
-    std::vector<double3> origins_device(numRays);
-    std::vector<double3> directions_device(numRays);
-    for (size_t i = 0; i < numRays; ++i) {
+    std::vector<double3> origins_device(num_rays);
+    std::vector<double3> directions_device(num_rays);
+    for (size_t i = 0; i < num_rays; ++i) {
       origins_device[i] = {origins[i].x, origins[i].y, origins[i].z};
       directions_device[i] = {directions[i].x, directions[i].y, directions[i].z};
     }
 
-    auto origins_buffer = gprtDeviceBufferCreate<double3>(context, numRays, origins_device.data());
-    auto directions_buffer = gprtDeviceBufferCreate<double3>(context, numRays, directions_device.data());
+    auto origins_buffer = gprtDeviceBufferCreate<double3>(context, num_rays, origins_device.data());
+    auto directions_buffer = gprtDeviceBufferCreate<double3>(context, num_rays, directions_device.data());
+    auto volume_ids_buffer = gprtDeviceBufferCreate<int32_t>(context, num_rays, volume_ids.data()); 
 
     constexpr uint32_t threads_per_group = 256;
-    const uint32_t groups = static_cast<uint32_t>((numRays + threads_per_group - 1) / threads_per_group);
+    const uint32_t groups = static_cast<uint32_t>((num_rays + threads_per_group - 1) / threads_per_group);
 
     ExternalRayParams params = {};
     params.xdgRays = static_cast<dblRay*>(buffer.rayDevPtr);
     params.origins = gprtBufferGetDevicePointer(origins_buffer);
     params.directions = gprtBufferGetDevicePointer(directions_buffer);
-    params.num_rays = static_cast<uint32_t>(numRays);
+    params.num_rays = static_cast<uint32_t>(num_rays);
     params.total_threads = groups * threads_per_group;
-    params.volume_mesh_id = volume_id;
+    params.volume_mesh_ids = gprtBufferGetDevicePointer(volume_ids_buffer);
     params.enabled = 1u;
 
     gprtComputeLaunch(packRays,
@@ -62,6 +65,9 @@ static RayPopulationCallback make_populate_callback(const std::vector<Position>&
 
     gprtBufferDestroy(origins_buffer);
     gprtBufferDestroy(directions_buffer);
+    if (volume_ids_buffer) {
+      gprtBufferDestroy(volume_ids_buffer);
+    }
   };
 }
 
@@ -72,18 +78,13 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
   constexpr auto rt_backend = TestType::value;
 
   DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
-    check_ray_tracer_supported(rt_backend);
-
-    auto rti = create_raytracer(rt_backend);
-    REQUIRE(rti);
-
-    auto mm = std::make_shared<MeshMock>(false);
-    mm->init();
-    REQUIRE(mm->mesh_library() == MeshLibrary::MOCK);
-
-    auto xdg = std::make_shared<XDG>();
-    xdg->set_mesh_manager_interface(mm);
-    xdg->set_ray_tracing_interface(rti);
+    check_ray_tracer_supported(rt_backend); // skip if backend not enabled at configuration time
+    std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB, rt_backend);
+    REQUIRE(xdg->ray_tracing_interface()->library() == rt_backend);
+    REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
+    const auto& mesh_manager = xdg->mesh_manager();
+    mesh_manager->load_file("jezebel.h5m");
+    mesh_manager->init();
     xdg->prepare_raytracer();
 
     std::vector<Position> origins;
@@ -91,29 +92,34 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
     size_t N = 64;
     make_rays(N, origins, directions);
 
-    auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(rti);
+    auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(xdg->ray_tracing_interface());
     REQUIRE(gprt_rt);
 
-    const MeshID volume_id = mm->volumes()[0];
+    std::vector<MeshID> volumes = mesh_manager->volumes();
+    REQUIRE(volumes.size() >= 2);
+    const MeshID volume_id = volumes[0];
+    const MeshID volume_id_alt = volumes[1];
     GPRTContext context = gprt_rt->context();
     GPRTModule module = gprtModuleCreate(context, test_direct_ray_buffer_access_deviceCode);
     auto packRays = gprtComputeCreate<ExternalRayParams>(context, module, "pack_external_rays");
 
     std::vector<double> expected_distances(N, INFTY);
     std::vector<MeshID> expected_surfaces(N, ID_NONE);
-    xdg->ray_fire(volume_id,
-                  origins.data(),
-                  directions.data(),
-                  N,
-                  expected_distances.data(),
-                  expected_surfaces.data());
+    
+    std::vector<MeshID> volume_ids(N, volume_id);
+    for (size_t i = 0; i < N; ++i) {
+      volume_ids[i] = (i % 2 == 0) ? volume_id : volume_id_alt;
+      const auto [dist, surf] = xdg->ray_fire(volume_ids[i], origins[i], directions[i]);
+      expected_distances[i] = dist;
+      expected_surfaces[i] = surf;
+    }
 
     // Create callback to populate rays on device
     RayPopulationCallback populate_callback = make_populate_callback(origins,
-                                                                      directions,
-                                                                      context,
-                                                                      packRays,
-                                                                      volume_id);
+                                                                     directions,
+                                                                     volume_ids,
+                                                                     context,
+                                                                     packRays);
       
     // Populate rays via external API
     xdg->populate_rays_external(N, populate_callback);
@@ -141,18 +147,13 @@ TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]"
   constexpr auto rt_backend = TestType::value;
 
   DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
-    check_ray_tracer_supported(rt_backend);
-
-    auto rti = create_raytracer(rt_backend);
-    REQUIRE(rti);
-
-    auto mm = std::make_shared<MeshMock>(false);
-    mm->init();
-    REQUIRE(mm->mesh_library() == MeshLibrary::MOCK);
-
-    auto xdg = std::make_shared<XDG>();
-    xdg->set_mesh_manager_interface(mm);
-    xdg->set_ray_tracing_interface(rti);
+    check_ray_tracer_supported(rt_backend); // skip if backend not enabled at configuration time
+    std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB, rt_backend);
+    REQUIRE(xdg->ray_tracing_interface()->library() == rt_backend);
+    REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
+    const auto& mesh_manager = xdg->mesh_manager();
+    mesh_manager->load_file("jezebel.h5m");
+    mesh_manager->init();
     xdg->prepare_raytracer();
 
     std::vector<Position> points;
@@ -160,24 +161,29 @@ TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]"
     size_t N = 64;
     make_points(N, points, directions);
 
-    auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(rti);
+    auto gprt_rt = std::dynamic_pointer_cast<GPRTRayTracer>(xdg->ray_tracing_interface());
     REQUIRE(gprt_rt);
 
-    const MeshID volume_id = mm->volumes()[0];
+    std::vector<MeshID> volumes = mesh_manager->volumes();
+    REQUIRE(volumes.size() >= 2);
+    const MeshID volume_id = volumes[0];
+    const MeshID volume_id_alt = volumes[1];
     GPRTContext context = gprt_rt->context();
     GPRTModule module = gprtModuleCreate(context, test_direct_ray_buffer_access_deviceCode);
     auto packRays = gprtComputeCreate<ExternalRayParams>(context, module, "pack_external_rays");
 
     std::vector<uint8_t> expected_piv(N, 0);
+    std::vector<MeshID> volume_ids(N, volume_id);
     for (size_t i = 0; i < N; ++i) {
-      expected_piv[i] = static_cast<uint8_t>(xdg->point_in_volume(volume_id, points[i], &directions[i]));
+      volume_ids[i] = (i % 2 == 0) ? volume_id : volume_id_alt;
+      expected_piv[i] = static_cast<uint8_t>(xdg->point_in_volume(volume_ids[i], points[i], &directions[i]));
     }
 
     RayPopulationCallback populate_callback = make_populate_callback(points,
                                                                       directions,
+                                                                      volume_ids,
                                                                       context,
-                                                                      packRays,
-                                                                      volume_id);
+                                                                      packRays);
     xdg->populate_rays_external(N, populate_callback);
 
     xdg->point_in_volume_prepared(N);
