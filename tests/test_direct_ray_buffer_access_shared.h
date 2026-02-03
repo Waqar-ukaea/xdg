@@ -8,7 +8,6 @@ struct ExternalRayParams {
   double3* directions;
   uint num_rays;
   uint total_threads;
-  int volume_mesh_id;
+  int32_t* volume_mesh_ids;
   uint enabled;
 };
-
