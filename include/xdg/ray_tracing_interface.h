@@ -13,8 +13,11 @@
 #include "xdg/primitive_ref.h"
 #include "xdg/geometry_data.h"
 
+
 namespace xdg
 {
+
+struct dblHit; // forward declaration for dblHit
 
 /**
  * @brief Device ray/hit buffer descriptor
@@ -269,6 +272,11 @@ public:
    */
   virtual void populate_rays_external(size_t numRays,
                                       const RayPopulationCallback& callback) {
+    fatal_error("GPU ray tracing not supported with this RayTracer backend");
+  }
+
+  virtual void transfer_hits_buffer_to_host(const size_t num_rays,
+                                            std::vector<dblHit>& hits) {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
 

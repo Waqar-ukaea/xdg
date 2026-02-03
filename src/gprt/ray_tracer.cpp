@@ -371,7 +371,10 @@ void GPRTRayTracer::point_in_volume(TreeID tree,
                                           const Direction* directions,
                                           std::vector<MeshID>* exclude_primitives)
 {
-  if (num_points == 0) return; // no work to do. Early exit
+  if (num_points == 0) {
+    warning("Warning number of points passed to point_in_volume is 0. No work to be done.");
+    return; 
+  }
 
   GPRTAccel volume = surface_volume_tree_to_accel_map.at(tree);
   auto rayGen = rayGenPrograms_.at(RayGenType::POINT_IN_VOLUME);
@@ -440,7 +443,10 @@ void GPRTRayTracer::ray_fire(TreeID tree,
                              HitOrientation orientation,
                              std::vector<MeshID>* const exclude_primitives)
 {
-  if (num_rays == 0) return; // no work to do. Early exit
+  if (num_rays == 0) {
+    warning("Warning number of rays passed to ray_fire is 0. No work to be done."); 
+    return; 
+  }
 
   GPRTAccel volume = surface_volume_tree_to_accel_map.at(tree);
   auto rayGen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
@@ -605,7 +611,10 @@ DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
 void GPRTRayTracer::populate_rays_external(size_t numRays,
                                            const RayPopulationCallback& callback)
 {
-  if (numRays == 0) return;
+  if (numRays == 0) { 
+    warning("Warning number of rays passed to populate_rays_external is 0. No work to be done.");
+    return;
+  }
 
   // Ensure device buffers are large enough
   check_rayhit_buffer_capacity(numRays);
@@ -617,11 +626,12 @@ void GPRTRayTracer::populate_rays_external(size_t numRays,
   // Note: The callback is responsible for synchronization if using an async API
 }
 
-void GPRTRayTracer::download_hits(const size_t num_rays,
-                                  std::vector<dblHit>& hits)
+void GPRTRayTracer::transfer_hits_buffer_to_host(const size_t num_rays,
+                                                 std::vector<dblHit>& hits)
 {
+  hits.clear(); // Ensure hits vector is empty before populating
   if (num_rays == 0) {
-    hits.clear();
+    warning("Warning number of rays passed to transfer_hits_buffer_to_host is 0. No work to be done.");
     return;
   }
   if (num_rays > rayHitBuffers_.view.capacity) {
