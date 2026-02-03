@@ -284,8 +284,6 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
   pushConstants.hitOrientation = HitOrientation::ANY;
   pushConstants.tMax = INFTY;
   pushConstants.tMin = 0.0;
-  pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
-  pushConstants.volume_tree = tree;
 
   gprtRayGenLaunch1D(context_, rayGen, 1, pushConstants); // Launch raygen shader (entry point to RT pipeline)
   gprtGraphicsSynchronize(context_); // Ensure all GPU operations are complete before returning control flow to CPU
@@ -346,8 +344,6 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   pushConstants.hitOrientation = orientation;
   pushConstants.tMax = dist_limit;
   pushConstants.tMin = 0.0;
-  pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
-  pushConstants.volume_tree = tree;
 
   gprtRayGenLaunch1D(context_, rayGen, 1, pushConstants); // Launch raygen shader (entry point to RT pipeline)
   gprtGraphicsSynchronize(context_); // Ensure all GPU operations are complete before returning control flow to CPU
@@ -417,8 +413,6 @@ void GPRTRayTracer::point_in_volume(TreeID tree,
   pushConstants.hitOrientation = HitOrientation::ANY;
   pushConstants.tMax = INFTY;
   pushConstants.tMin = 0.0;
-  pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
-  pushConstants.volume_tree = tree;
   
   gprtRayGenLaunch1D(context_, rayGen, num_points, pushConstants);
   gprtGraphicsSynchronize(context_);
@@ -477,8 +471,6 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   pushConstants.hitOrientation = orientation;
   pushConstants.tMax = dist_limit;
   pushConstants.tMin = 0.0;
-  pushConstants.volume_accel = gprtAccelGetDeviceAddress(volume);
-  pushConstants.volume_tree = tree;
 
   // Launch the ray generation shader with push constants and buffer bindings
   gprtRayGenLaunch1D(context_, rayGen, num_rays, pushConstants);
