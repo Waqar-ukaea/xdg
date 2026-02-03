@@ -13,6 +13,7 @@ bool plucker_tet_containment_test(const Position& point,
                                   const Position& v1,
                                   const Position& v2,
                                   const Position& v3) {
+    // Aliasing to avoid namespace clash with GPRT
     using linalg::aliases::double3x3;
     using linalg::aliases::double3;
     using linalg::aliases::double4;

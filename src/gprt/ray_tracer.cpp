@@ -496,45 +496,6 @@ void GPRTRayTracer::ray_fire(TreeID tree,
   return;
 }
 
-void 
-GPRTRayTracer::ray_fire_prepared(const size_t num_rays,
-                                 const double dist_limit,
-                                 HitOrientation orientation)
-{
-  if (num_rays == 0) return; // no work to do. Early exit
-
-  check_rayhit_buffer_capacity(num_rays); 
-
-  auto rayGen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
-
-  dblRayFirePushConstants pushConstants;
-  pushConstants.tMax = dist_limit;
-  pushConstants.tMin = 0.0;
-  pushConstants.hitOrientation = orientation; // Set orientation for the ray
-  
-  gprtRayGenLaunch1D(context_, rayGen, num_rays, pushConstants);
-  gprtGraphicsSynchronize(context_);
-  return;
-}
-
-void 
-GPRTRayTracer::point_in_volume_prepared(const size_t num_points)
-{
-  if (num_points == 0) return; // no work to do. Early exit
-
-  check_rayhit_buffer_capacity(num_points); 
-  auto rayGen = rayGenPrograms_.at(RayGenType::POINT_IN_VOLUME);
-
-  dblRayFirePushConstants pushConstants;
-  pushConstants.tMax = INFTY;
-  pushConstants.tMin = 0.0;
-  pushConstants.hitOrientation = HitOrientation::ANY; // Set orientation for the ray
-  
-  gprtRayGenLaunch1D(context_, rayGen, num_points, pushConstants);
-  gprtGraphicsSynchronize(context_);
-  return;
-}
-
 void GPRTRayTracer::create_global_surface_tree()
 {
   // Create a TLAS (Top-Level Acceleration Structure) for all the volumes
@@ -602,50 +563,6 @@ void GPRTRayTracer::update_meshid_to_sense_()
     DPTriangleGeomData* geom_data = gprtGeomGetParameters(geom);
     geom_data->meshid_to_sense = gprtBufferGetDevicePointer(meshid_to_sense_buffer_);
   }
-}
-
-
-DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
-{
-  check_rayhit_buffer_capacity(N);
-  return rayHitBuffers_.view;
-}
-
-void GPRTRayTracer::populate_rays_external(size_t numRays,
-                                           const RayPopulationCallback& callback)
-{
-  if (numRays == 0) { 
-    warning("Warning number of rays passed to populate_rays_external is 0. No work to be done.");
-    return;
-  }
-
-  // Ensure device buffers are large enough
-  check_rayhit_buffer_capacity(numRays);
-
-  // Use the user callback to populate the rays directly on the device
-  callback(rayHitBuffers_.view, numRays);
-
-  // After callback returns, we assume the ray buffer is populated and ready to trace
-  // Note: The callback is responsible for synchronization if using an async API
-}
-
-void GPRTRayTracer::transfer_hits_buffer_to_host(const size_t num_rays,
-                                                 std::vector<dblHit>& hits)
-{
-  hits.clear(); // Ensure hits vector is empty before populating
-  if (num_rays == 0) {
-    warning("Warning number of rays passed to transfer_hits_buffer_to_host is 0. No work to be done.");
-    return;
-  }
-  if (num_rays > rayHitBuffers_.view.capacity) {
-    fatal_error("Requested {} hits, but hit buffer capacity is {}", num_rays, rayHitBuffers_.view.capacity);
-  }
-
-  hits.resize(num_rays);
-  gprtBufferMap(rayHitBuffers_.hit);
-  dblHit* hit = gprtBufferGetHostPointer(rayHitBuffers_.hit);
-  std::copy(hit, hit + num_rays, hits.begin());
-  gprtBufferUnmap(rayHitBuffers_.hit);
 }
 
 } // namespace xdg

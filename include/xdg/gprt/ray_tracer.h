@@ -15,6 +15,7 @@
 extern GPRTProgram dbl_deviceCode;
 namespace xdg {
 
+// Ray generation types corresponding to different queries for GPRT
 enum class RayGenType {
   RAY_FIRE,
   POINT_IN_VOLUME,
@@ -75,9 +76,9 @@ class GPRTRayTracer : public RayTracer {
     };
 
     bool point_in_volume(TreeID scene,
-                        const Position& point,
-                        const Direction* direction = nullptr,
-                        const std::vector<MeshID>* exclude_primitives = nullptr) const override;
+                         const Position& point,
+                         const Direction* direction = nullptr,
+                         const std::vector<MeshID>* exclude_primitives = nullptr) const override;
 
     void point_in_volume(TreeID tree,
                          const Position* points,
@@ -87,11 +88,11 @@ class GPRTRayTracer : public RayTracer {
                          std::vector<MeshID>* exclude_primitives = nullptr) override;
 
     std::pair<double, MeshID> ray_fire(TreeID scene,
-                                      const Position& origin,
-                                      const Direction& direction,
-                                      const double dist_limit = INFTY,
-                                      HitOrientation orientation = HitOrientation::EXITING,
-                                      std::vector<MeshID>* const exclude_primitives = nullptr) override;
+                                       const Position& origin,
+                                       const Direction& direction,
+                                       const double dist_limit = INFTY,
+                                       HitOrientation orientation = HitOrientation::EXITING,
+                                       std::vector<MeshID>* const exclude_primitives = nullptr) override;
     void ray_fire(TreeID tree,
                   const Position* origins,
                   const Direction* directions,
@@ -101,12 +102,6 @@ class GPRTRayTracer : public RayTracer {
                   const double dist_limit = INFTY,
                   HitOrientation orientation = HitOrientation::EXITING,
                   std::vector<MeshID>* const exclude_primitives = nullptr) override;
-
-    void ray_fire_prepared(const size_t num_rays,
-                           const double dist_limit = INFTY,
-                           HitOrientation orientation = HitOrientation::EXITING) override;
-
-    void point_in_volume_prepared(const size_t num_rays) override;
 
     std::pair<double, MeshID> closest(TreeID scene,
                                       const Position& origin) override {
@@ -122,37 +117,12 @@ class GPRTRayTracer : public RayTracer {
       return false;
     }
 
-    // Check to see if buffers large enough and resize if not
     void check_rayhit_buffer_capacity(const size_t N) override;
 
-    // Method to expose device ray and hit buffers for external population
-    DeviceRayHitBuffers get_device_rayhit_buffers(const size_t N) override;
-
-    /**
-     * @brief Allocate device buffers and invoke a callback to populate them
-     *
-     * This method enables downstream applications to populate ray buffers using
-     * any compute API (GPRT, CUDA, HIP, etc.) without XDG needing to know the details.
-     */
-    void populate_rays_external(size_t numRays,
-                                const RayPopulationCallback& callback) override;
-
-    void transfer_hits_buffer_to_host(const size_t num_rays,
-                                      std::vector<dblHit>& hits) override;
-
+    // Return GPRT context to attatch "external" shaders to same context (required since GPRT doesn't support VK_EXTERNAL_MEMORY_EXTENSION yet)  
     GPRTContext context()
     {
       return context_;
-    }
-
-    SurfaceAccelerationStructure* tlas_handle_device_ptr() const
-    {
-      return gprtBufferGetDevicePointer(tlas_handle_buffer_);
-    }
-
-    size_t tlas_handle_count() const
-    {
-      return tlas_handles_.size();
     }
 
   private:
@@ -193,19 +163,13 @@ class GPRTRayTracer : public RayTracer {
     GPRTBufferOf<int> meshid_to_sense_buffer_ {nullptr}; // Device buffer for MeshID -> sense map
     bool initialized_ {false}; // flag to indicate if init() has been called
 
-    void update_tlas_table_();
-    void update_meshid_to_sense_();
+    void update_tlas_table_(); // Update the TLAS table (MeshID -> SurfaceAccelerationStructure) buffer on the device
+    void update_meshid_to_sense_(); // Update the MeshID -> sense (+1/-1) buffer on the device
 
+    // Helper to upload data to device buffer, resizing buffer as needed
     template <typename T>
     void upload_device_buffer_(GPRTBufferOf<T>& buf, const std::vector<T>& host_data)
     {
-      if (host_data.empty()) return;
-
-      if (!buf) {
-        buf = gprtDeviceBufferCreate<T>(context_, host_data.size(), host_data.data());
-        return;
-      }
-
       gprtBufferResize<T>(context_, buf, host_data.size(), false);
       gprtBufferMap(buf);
         std::copy(host_data.begin(), host_data.end(), gprtBufferGetHostPointer(buf));

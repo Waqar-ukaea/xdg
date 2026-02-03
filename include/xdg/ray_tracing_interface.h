@@ -44,21 +44,6 @@ struct DeviceRayHitBuffers {
   size_t hitStride; // Bytes between hit elements - sizeof(dblHit)
 };
 
-/**
- * @brief Callback alias for external ray population
- *
- * Allows downstream applications to populate ray buffers using their own compute backend
- * (GPRT, CUDA, OpenMP) without XDG needing to know the specifics.
- *
- * The callback receives opaque device pointers and should interpret them according to
- * the buffer metadata (stride information). Alternatively, users can rely on the standard
- * dblRay/dblHit layouts if they don't need custom padding/alignment.
- *
- * @param buffer Device ray buffer descriptor with opaque pointers and metadata
- * @param numRays Number of rays to generate/populate
- */
-using RayPopulationCallback = std::function<void(const DeviceRayHitBuffers& buffer, size_t numRays)>;
-
 class RayTracer {
 public:
   // Constructors/Destructors
@@ -223,60 +208,11 @@ public:
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
 
-  virtual void ray_fire_prepared(const size_t num_rays,
-                                 const double dist_limit = INFTY,
-                                 HitOrientation orientation = HitOrientation::EXITING) 
-  {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }  
-
-  virtual void point_in_volume_prepared(const size_t num_points) 
-  {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-
   /**
    * @brief Check whether the current ray buffer capacity is sufficient for the number of rays requested
    * @param[in] num_rays The number of rays to be processed
    */
   virtual void check_rayhit_buffer_capacity(const size_t num_rays) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-
-  /**
-   * @brief return device pointers to ray and hit buffers for GPU ray tracing
-   * @return DeviceRayHitBuffers struct containing device pointers to ray and hit buffers
-   */
-  virtual DeviceRayHitBuffers get_device_rayhit_buffers(const size_t num_rays) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-    return {};
-  }
-
-  /**
-   * @brief Allocate device ray buffers and populate them via a user-provided callback
-   *
-   * This method allows downstream applications to populate ray buffers using any compute
-   * backend (GPRT, CUDA, HIP, OpenCL, etc.) without coupling them to XDG's internals.
-   *
-   * The workflow:
-   * 1. XDG allocates device memory for rays (if not already large enough)
-   * 2. XDG passes device pointers to the callback
-   * 3. User's callback populates the buffers using their preferred compute kernel/shader
-   * 4. User's callback returns (XDG assumes buffers are now populated)
-   *
-   * This avoids unnecessary host-device transfers by allowing users to write directly
-   * to XDG's device buffers without any host-side transfers.
-   *
-   * @param numRays Number of rays to allocate space for
-   * @param callback Function that will populate the ray buffer. Receives the allocated buffer and ray count.
-   */
-  virtual void populate_rays_external(size_t numRays,
-                                      const RayPopulationCallback& callback) {
-    fatal_error("GPU ray tracing not supported with this RayTracer backend");
-  }
-
-  virtual void transfer_hits_buffer_to_host(const size_t num_rays,
-                                            std::vector<dblHit>& hits) {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
 

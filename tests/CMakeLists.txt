@@ -37,11 +37,6 @@ if (XDG_ENABLE_MOAB)
     list(APPEND TEST_NAMES test_overlap_check)
 endif()
 
-# This test really should be appended when any GPU library is enabled
-if (XDG_ENABLE_GPRT)
-    list(APPEND TEST_NAMES test_direct_ray_buffer_access)
-endif()
-
 foreach(test ${TEST_NAMES})
     add_executable(${test} ${test}.cpp)
     target_link_libraries(${test} xdg Catch2::Catch2WithMain)
@@ -52,19 +47,6 @@ foreach(test ${TEST_NAMES})
         SKIP_RETURN_CODE 4 # registers skipped tests with CTest correctly
         TEST_PREFIX "${test}::")
 endforeach()
-
-if (XDG_ENABLE_GPRT)
-    embed_devicecode(
-        OUTPUT_TARGET
-        test_direct_ray_buffer_access_deviceCode
-        HEADERS
-        ${CMAKE_CURRENT_SOURCE_DIR}/test_direct_ray_buffer_access_shared.h
-        SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/test_direct_ray_buffer_access_deviceCode.slang
-    )
-    target_link_libraries(test_direct_ray_buffer_access test_direct_ray_buffer_access_deviceCode)
-endif()
-
 
 set(
 TEST_FILES

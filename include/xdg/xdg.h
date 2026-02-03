@@ -212,23 +212,6 @@ Direction surface_normal(MeshID surface,
     ray_tracing_interface_ = ray_tracing_interface;
   }
 
-  DeviceRayHitBuffers get_device_rayhit_buffers(const size_t requiredCapacity)
-  {
-    return ray_tracing_interface()->get_device_rayhit_buffers(requiredCapacity);
-  }
-
-  void populate_rays_external(size_t numRays,
-                              const RayPopulationCallback& callback)
-  {
-    return ray_tracing_interface()->populate_rays_external(numRays, callback);
-  }
-
-// Device to host transfer of hit buffers (GPRT only for now)
-#ifdef XDG_ENABLE_GPRT
-  void transfer_hits_buffer_to_host(const size_t num_rays,
-                                    std::vector<dblHit>& hits);
-#endif
-
 // Accessors
   const std::shared_ptr<RayTracer>& ray_tracing_interface() const {
     return ray_tracing_interface_;
