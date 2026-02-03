@@ -54,7 +54,7 @@ static RayPopulationCallback make_populate_callback(const std::vector<Position>&
     params.directions = gprtBufferGetDevicePointer(directions_buffer);
     params.num_rays = static_cast<uint32_t>(num_rays);
     params.total_threads = groups * threads_per_group;
-    params.volume_mesh_ids = gprtBufferGetDevicePointer(volume_ids_buffer);
+    params.volume_mesh_ids = gprtBufferGetDevicePointer(volume_ids_buffer); // Pass array of volume IDs to compute shader
     params.enabled = 1u;
 
     gprtComputeLaunch(packRays,
@@ -105,10 +105,9 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
 
     std::vector<double> expected_distances(N, INFTY);
     std::vector<MeshID> expected_surfaces(N, ID_NONE);
-    
     std::vector<MeshID> volume_ids(N, volume_id);
     for (size_t i = 0; i < N; ++i) {
-      volume_ids[i] = (i % 2 == 0) ? volume_id : volume_id_alt;
+      volume_ids[i] = (i % 2 == 0) ? volume_id : volume_id_alt; // Volume IDs alternating between two volumes
       const auto [dist, surf] = xdg->ray_fire(volume_ids[i], origins[i], directions[i]);
       expected_distances[i] = dist;
       expected_surfaces[i] = surf;
@@ -124,7 +123,7 @@ TEMPLATE_TEST_CASE("Ray Fire with external populated rays", "[rayfire][mock]",
     // Populate rays via external API
     xdg->populate_rays_external(N, populate_callback);
 
-    xdg->ray_fire_prepared(volume_id, N);
+    xdg->ray_fire_prepared(N);
     std::vector<dblHit> hits;
     xdg->transfer_hits_buffer_to_host(N, hits);
 
@@ -192,7 +191,7 @@ TEMPLATE_TEST_CASE("Point-in-volume with external populated rays", "[piv][mock]"
 
     REQUIRE(hits.size() == N);
     for (size_t i = 0; i < N; ++i) {
-      const auto expected = expected_piv[i] ? xdg::PointInVolume::INSIDE : xdg::PointInVolume::OUTSIDE;
+      const auto expected = expected_piv[i] ? xdg::PointInVolume::INSIDE : xdg::PointInVolume::OUTSIDE; // convert back to enum
       REQUIRE(hits[i].piv == expected);
     }
 
