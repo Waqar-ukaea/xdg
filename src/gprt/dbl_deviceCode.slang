@@ -241,8 +241,9 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
 
     double3 norm = record.normals[primID]; // recover double precision normal. TODO - Should we calculate from vertices instead?
 
-    // sense adjustment of normal
-    if (PC.volume_tree == record.reverse_tree)
+    // sense adjustment of normal (per MeshID)
+    int mesh_sense = record.meshid_to_sense[ray.volume_mesh_id]; // +1 forward, -1 reverse
+    if (mesh_sense < 0)
     {
         norm = -norm;
     }

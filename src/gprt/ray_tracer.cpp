@@ -171,6 +171,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     geom_data->normals = gprtBufferGetDevicePointer(normal_buffer);
     geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
     geom_data->num_faces = num_faces;
+    // meshid_to_sense pointer is set after meshid_to_sense_buffer_ is created
 
     constexpr uint32_t threadsPerGroup = 64; // must match [numthreads(64,1,1)]
     uint32_t numGroupsX = (num_faces + threadsPerGroup - 1) / threadsPerGroup;
@@ -194,14 +195,14 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     surfaceBlasInstances.push_back(instance);
     globalBlasInstances_.push_back(instance);
     
-    // Always update per-volume info
+    // Always update per-volume info and MeshID -> sparse sense mapping
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
     if (volume_id == forward_parent) {
-      geom_data->forward_vol = forward_parent;
-      geom_data->forward_tree = tree;
+      meshid_to_sense_.resize(static_cast<size_t>(forward_parent) + 1, 1);
+      meshid_to_sense_[forward_parent] = 1;
     } else if (volume_id == reverse_parent) {
-      geom_data->reverse_vol = reverse_parent;
-      geom_data->reverse_tree = tree;
+      meshid_to_sense_.resize(static_cast<size_t>(reverse_parent) + 1, 1);
+      meshid_to_sense_[reverse_parent] = -1;
     } else {
       fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
     }
@@ -217,6 +218,8 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     tlas_handles_.resize(volume_id + 1, SurfaceAccelerationStructure{});
   }
   tlas_handles_[volume_id] = gprtAccelGetDeviceAddress(volume_tlas);
+
+  update_meshid_to_sense_();
 
   if (initialized_) {
     update_tlas_table_();
@@ -591,15 +594,29 @@ void GPRTRayTracer::check_rayhit_buffer_capacity(const size_t N)
 // Update the TLAS table (MeshID -> SurfaceAccelerationStructure) buffer on the device
 void GPRTRayTracer::update_tlas_table_()
 {
-  gprtBufferResize<SurfaceAccelerationStructure>(context_, tlas_handle_buffer_, tlas_handles_.size(), false);
-  gprtBufferMap(tlas_handle_buffer_);
-    std::copy(tlas_handles_.begin(), tlas_handles_.end(), gprtBufferGetHostPointer(tlas_handle_buffer_));
-  gprtBufferUnmap(tlas_handle_buffer_);
+  upload_device_buffer_(tlas_handle_buffer_, tlas_handles_);
 
   for (auto type : {RayGenType::RAY_FIRE, RayGenType::POINT_IN_VOLUME}) {
     auto* raygendata = gprtRayGenGetParameters(rayGenPrograms_.at(type));
     raygendata->meshid_to_accel_address = gprtBufferGetDevicePointer(tlas_handle_buffer_);
   }
+}
+
+void GPRTRayTracer::update_meshid_to_sense_()
+{
+  upload_device_buffer_(meshid_to_sense_buffer_, meshid_to_sense_);
+
+  for (auto const& [surf, geom] : surface_to_geometry_map_) {
+    DPTriangleGeomData* geom_data = gprtGeomGetParameters(geom);
+    geom_data->meshid_to_sense = gprtBufferGetDevicePointer(meshid_to_sense_buffer_);
+  }
+}
+
+
+DeviceRayHitBuffers GPRTRayTracer::get_device_rayhit_buffers(const size_t N)
+{
+  check_rayhit_buffer_capacity(N);
+  return rayHitBuffers_.view;
 }
 
 void GPRTRayTracer::populate_rays_external(size_t numRays,

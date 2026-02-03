@@ -176,9 +176,28 @@ class GPRTRayTracer : public RayTracer {
     std::unordered_map<SurfaceTreeID, MeshID> surface_tree_to_volume_map_;
     std::vector<SurfaceAccelerationStructure> tlas_handles_; // Host side storage of TLAS device addresses
     GPRTBufferOf<SurfaceAccelerationStructure> tlas_handle_buffer_; // Device buffer for TLAS addresses
+    std::vector<int> meshid_to_sense_; // Host-side MeshID -> sense map
+    GPRTBufferOf<int> meshid_to_sense_buffer_ {nullptr}; // Device buffer for MeshID -> sense map
     bool initialized_ {false}; // flag to indicate if init() has been called
 
     void update_tlas_table_();
+    void update_meshid_to_sense_();
+
+    template <typename T>
+    void upload_device_buffer_(GPRTBufferOf<T>& buf, const std::vector<T>& host_data)
+    {
+      if (host_data.empty()) return;
+
+      if (!buf) {
+        buf = gprtDeviceBufferCreate<T>(context_, host_data.size(), host_data.data());
+        return;
+      }
+
+      gprtBufferResize<T>(context_, buf, host_data.size(), false);
+      gprtBufferMap(buf);
+        std::copy(host_data.begin(), host_data.end(), gprtBufferGetHostPointer(buf));
+      gprtBufferUnmap(buf);
+    }
 
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};
@@ -187,5 +206,4 @@ class GPRTRayTracer : public RayTracer {
   };
 
 } // namespace xdg
-
 #endif // include guard
