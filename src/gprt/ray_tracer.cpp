@@ -21,6 +21,7 @@ GPRTRayTracer::GPRTRayTracer()
   excludePrimitivesBuffer_ = gprtDeviceBufferCreate<int32_t>(context_); // initialise buffer of size 1
 
   tlas_handle_buffer_ = gprtDeviceBufferCreate<SurfaceAccelerationStructure>(context_); // initialise buffer of size 1
+  meshid_to_sense_buffer_ = gprtDeviceBufferCreate<int>(context_); // initialise buffer of size 1
 
   setup_shaders();
 
@@ -64,6 +65,7 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtBufferDestroy(rayHitBuffers_.hit);
   gprtBufferDestroy(excludePrimitivesBuffer_);
   gprtBufferDestroy(tlas_handle_buffer_);
+  gprtBufferDestroy(meshid_to_sense_buffer_);
 
   // Destroy module and context
   gprtModuleDestroy(module_);
