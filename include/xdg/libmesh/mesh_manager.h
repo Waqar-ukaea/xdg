@@ -28,6 +28,9 @@ public:
 
   // Backend methods
 
+  //! \brief Map ID spaces into indices for ordered access by downstream applications
+  void map_id_spaces();
+
   //! Discover element faces on sudbomain interfaces,
   //! create surfaces and topology accordingly,
   //! and assign transmission boundary conditions for these interfacdes.
@@ -74,6 +77,10 @@ public:
       case 2: return num_surfaces();
       default: return 0;
     }
+  }
+
+  int num_vertices() const override {
+    return mesh()->n_nodes();
   }
 
   int num_volume_elements(MeshID volume) const override {

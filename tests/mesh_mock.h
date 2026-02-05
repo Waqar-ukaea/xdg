@@ -56,6 +56,10 @@ public:
     return -1;
   }
 
+  virtual int num_vertices() const override {
+    return vertices_.size();
+  }
+
   virtual int num_volume_elements(MeshID volume) const override {
     if (!volumetric_elements_) return 0;
     return 12;
@@ -221,6 +225,22 @@ public:
       vertices()[conn[3]]
     };
     return tetrahedron_volume(verts);
+  }
+
+  inline int element_index(MeshID element) const override {
+    return element;
+  }
+
+  inline MeshID element_id(size_t element_idx) const override {
+    return static_cast<MeshID>(element_idx);
+  }
+
+  inline MeshID vertex_id(size_t vertex_idx) const override {
+    return static_cast<MeshID>(vertex_idx);
+  }
+
+  inline int vertex_index(MeshID vertex) const override {
+    return static_cast<int>(vertex);
   }
 
   // Other

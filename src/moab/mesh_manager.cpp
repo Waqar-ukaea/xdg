@@ -37,6 +37,27 @@ void MOABMeshManager::init() {
   // initialize the direct access manager
   this->mb_direct()->setup();
 
+  // populate ID to index mappings
+
+  // define a function to convert from a handle to an ID
+  // this is used to convert from EntityHandle to MeshID in the BlockMapping
+  // this allows us to construct the ID mapping directly from a MOAB Range object
+  // instead of having to first create a vector of IDs
+  std::function<MeshID(const moab::EntityHandle&)> moab_handle_to_id =
+      [this](const moab::EntityHandle& handle) {
+        return this->moab_interface()->id_from_handle(handle);
+      };
+
+  volume_element_id_map_ = IDBlockMapping<MeshID>(
+      this->mb_direct()->element_data().entity_range,
+      moab_handle_to_id
+  );
+
+  vertex_id_map_ = IDBlockMapping<MeshID>(
+    this->mb_direct()->vertex_data().vertex_range,
+    moab_handle_to_id
+  );
+
   // ensure all of the necessary tag handles exist
   this->setup_tags();
 

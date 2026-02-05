@@ -54,6 +54,10 @@ public:
   void add_surface_to_volume(MeshID volume, MeshID surface, Sense sense, bool overwrite=false) override;
 
   // Mesh
+  int num_vertices() const override {
+    return this->mb_direct()->n_vertices();
+  }
+
   int num_volume_elements(MeshID volume) const override;
 
   int num_volume_elements() const override;
