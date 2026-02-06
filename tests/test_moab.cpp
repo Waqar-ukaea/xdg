@@ -19,6 +19,16 @@
 using namespace xdg;
 using namespace xdg::test;
 
+static bool contains_vertex(const std::vector<Vertex>& vertices, const Vertex& v, double tol)
+{
+  return std::any_of(vertices.begin(), vertices.end(),
+                     [&](const Vertex& candidate) {
+                       return std::fabs(candidate.x - v.x) <= tol &&
+                              std::fabs(candidate.y - v.y) <= tol &&
+                              std::fabs(candidate.z - v.z) <= tol;
+                     });
+}
+
 TEST_CASE("Test MOAB Initialization")
 {
   std::unique_ptr<MeshManager> mesh_manager = std::make_unique<MOABMeshManager>();
