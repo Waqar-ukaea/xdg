@@ -75,7 +75,8 @@ void GPRTRayTracer::setup_shaders()
   // TODO: Add Occluded and closest raygen entry points
 
   missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
-  aabbPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_aabbs");
+  aabbTriPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_tri_aabbs");
+  aabbTetPopulationProgram_ = gprtComputeCreate<DPTetrahedronGeomData>(context_, module_, "populate_tet_aabbs");
 
   // Create a "triangle" geometry type and set its closest-hit program
   trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
@@ -121,7 +122,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     auto triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
     geom_data = gprtGeomGetParameters(triangleGeom); // pointer to assign data to
 
-    // Get storage for vertices
+    // Get storage for vertices and indices
     auto vertices = mesh_manager->get_surface_vertices(surf);
     auto indices = mesh_manager->get_surface_connectivity(surf);
     std::vector<double3> dbl3Vertices;
@@ -166,7 +167,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
     geom_data->num_faces = num_faces;
     
-    gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
+    gprtComputeLaunch(aabbTriPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
 
     GPRTAccel blas = gprtAABBAccelCreate(context_, triangleGeom, buildParams_.buildMode);
 
@@ -210,8 +211,49 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
 ElementTreeID
 GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_manager, MeshID volume_id)
 {
-  warning("Element trees not currently supported with GPRT ray tracer");
-  return TREE_NONE;
+  auto volume_elements = mesh_manager->get_volume_elements(volume_id);
+  if (volume_elements.empty()) return TREE_NONE; // No elements in this volume, so no tree to create
+
+  ElementTreeID tree = next_element_tree_id();
+  element_trees_.push_back(tree);
+
+  DPTetrahedronGeomData* geom_data = nullptr;
+  auto tetrahedraGeom = gprtGeomCreate<DPTetrahedronGeomData>(context_, tetrahedraGeomType_);
+  
+  auto vertices = mesh_manager->get_volume_vertices(volume_id);
+  auto indices = mesh_manager->get_volume_connectivity(volume_id);
+  std::vector<double3> dbl3Vertices;
+  dbl3Vertices.reserve(vertices.size());
+  for (const auto &vertex : vertices) {
+    dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+  }
+
+  // Get storage for indices
+  std::vector<uint4> ui4Indices;
+  ui4Indices.reserve(indices.size() / 4);
+  for (size_t i = 0; i + 3 < indices.size(); i += 4) {
+    ui4Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2], indices[i + 3]);
+  }
+
+  auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
+  auto connectivity_buffer = gprtDeviceBufferCreate<uint4>(context_, ui4Indices.size(), ui4Indices.data());
+  auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*volume_elements.size(), 0); // AABBs for each tetrahedron
+  gprtAABBsSetPositions(tetrahedraGeom, aabb_buffer, volume_elements.size(), 2*sizeof(float3), 0);
+  
+  geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
+  geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
+  geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
+  geom_data->num_tets = volume_elements.size();
+  geom_data->vol_id = volume_id;
+
+  gprtComputeLaunch(aabbTetPopulationProgram_, {volume_elements.size(), 1, 1}, {1, 1, 1}, *geom_data);
+
+  // GPRTAccel volume_element_accel = nullptr;
+
+  // gprtSolidAccelCreate(context_, volume_element_accel); 
+
+  // element_volume_tree_to_accel_map[tree] = volume_element_accel;
+
 };
 
 bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree, 

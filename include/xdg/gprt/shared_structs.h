@@ -47,6 +47,17 @@ struct DPTriangleGeomData {
   int num_faces; // Number of faces in the geometry
 };
 
+struct DPTetrahedronGeomData {
+  double3 *vertex; // vertex buffer
+  float3 *aabbs; // AABB buffer 
+  uint4 *index;  // index buffer
+  int32_t vol_id;
+  dblRay *ray; // double precision rays
+  xdg::HitOrientation hitOrientation;
+  GPRTPrimitiveRef* primitive_refs;
+  int num_tets; // Number of tetrahedra in the geometry
+};
+
 struct dblRayGenData {
   dblRay *ray;
   dblHit *hit;

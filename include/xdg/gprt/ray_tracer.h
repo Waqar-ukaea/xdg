@@ -115,8 +115,9 @@ class GPRTRayTracer : public RayTracer {
     std::map<RayGenType, GPRTRayGenOf<dblRayGenData>> rayGenPrograms_;
 
     GPRTMissOf<void> missProgram_; 
-    GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
-    
+    GPRTComputeOf<DPTriangleGeomData> aabbTriPopulationProgram_; //<! AABB population program for double precision rays against triangle geometries
+    GPRTComputeOf<DPTetrahedronGeomData> aabbTetPopulationProgram_; //<! AABB population program for double precision rays against tetrahedron geometries
+
     // Buffers 
     gprtRayHit rayHitBuffers_;
     GPRTBufferOf<int32_t> excludePrimitivesBuffer_; //<! Buffer for excluded primitives
@@ -124,6 +125,7 @@ class GPRTRayTracer : public RayTracer {
     // Geometry Type and Instances
     std::vector<gprt::Instance> globalBlasInstances_; //<! List of every BLAS instance stored in this ray tracer
     GPRTGeomTypeOf<DPTriangleGeomData> trianglesGeomType_; //<! Geometry type for triangles
+    GPRTGeomTypeOf<DPTetrahedronGeomData> tetrahedraGeomType_; //<! Geometry type for tetrahedra (not currently supported)
 
     // Ray Generation parameters
     uint32_t numRayTypes_ = 1; // <! Number of ray types. Allows multiple shaders to be set to the same geometery
@@ -133,6 +135,8 @@ class GPRTRayTracer : public RayTracer {
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
+    std::unordered_map<ElementTreeID, GPRTAccel> element_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for element TLAS
+    
     std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
 
     // Global Tree IDs
