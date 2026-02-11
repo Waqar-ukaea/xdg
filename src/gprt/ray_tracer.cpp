@@ -248,12 +248,13 @@ GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_mana
 
   gprtComputeLaunch(aabbTetPopulationProgram_, {volume_elements.size(), 1, 1}, {1, 1, 1}, *geom_data);
 
-  // GPRTAccel volume_element_accel = nullptr;
+  GPRTAccel volume_element_accel = gprtAABBAccelCreate(context_, tetrahedraGeom, buildParams_.buildMode);
 
-  // gprtSolidAccelCreate(context_, volume_element_accel); 
+  gprtAccelBuild(context_, volume_element_accel, buildParams_);
 
   // element_volume_tree_to_accel_map[tree] = volume_element_accel;
 
+  return tree;
 };
 
 bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree, 
