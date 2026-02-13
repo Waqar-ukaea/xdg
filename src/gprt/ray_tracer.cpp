@@ -272,7 +272,7 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
 
   gprtBufferMap(rayHitBuffers_.ray); // Update the ray input buffer
   dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
-  ray[0].volume_accel = gprtAccelGetDeviceAddress(volume); 
+  ray[0].volume_accel_surf = gprtAccelGetDeviceAddress(volume); 
   ray[0].origin = {point.x, point.y, point.z};
   ray[0].direction = {directionUsed.x, directionUsed.y, directionUsed.z};
   ray[0].tMax = INFTY; // Set a large distance limit
@@ -329,7 +329,7 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   
   gprtBufferMap(rayHitBuffers_.ray); // Update the ray input buffer
   dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
-  ray[0].volume_accel = gprtAccelGetDeviceAddress(volume);
+  ray[0].volume_accel_surf = gprtAccelGetDeviceAddress(volume);
   ray[0].origin = {origin.x, origin.y, origin.z};
   ray[0].direction = {direction.x, direction.y, direction.z};
   ray[0].tMax = dist_limit;

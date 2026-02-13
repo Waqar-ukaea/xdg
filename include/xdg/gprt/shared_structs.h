@@ -18,7 +18,8 @@ struct dblRay
   int32_t exclude_count;           // Number of excluded primitives
   xdg::HitOrientation hitOrientation;
   int volume_tree; // TreeID of the volume being queried
-  SurfaceAccelerationStructure volume_accel; // The volume accel 
+  SurfaceAccelerationStructure volume_accel_surf; // The volume accel for surface acceleration structure
+  SolidAccelerationStructure volume_accel_solid; // The volume accel for solid acceleration structure
 };
 
 struct dblHit 

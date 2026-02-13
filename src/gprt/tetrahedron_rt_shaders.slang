@@ -4,10 +4,7 @@
 #include "../../include/xdg/gprt/rt_common.slangh"
 
 struct SolidRayFirePayload {
-    double distance; // Distance to intersection
-    int surf_id;     // ID of the surface hit
-    SolidAccelerationStructure tlas;
-    int primitive_id;       // ID of the primitive hit
+    int primitiveid; // ID of the primitive the point is contained within
 };
 
 
@@ -30,6 +27,73 @@ populate_tet_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTetrah
     
     record.aabbs[2 * primID] = fpaabbmin;
     record.aabbs[2 * primID + 1] = fpaabbmax;
+}
+
+[shader("raygeneration")]
+void find_element(uniform dblRayGenData record, uniform DPTetrahedronGeomData mesh) {
+    // This shader is only used to find the element containing a point, so we can ignore the raygen data and just use the ray's origin as the point to test for containment
+    SolidRayFirePayload payload;
+    uint rayID = DispatchRaysIndex().x;
+    PointDesc pointDesc;
+    pointDesc.Origin = float3(mesh.ray[rayID].origin);
+
+    SolidAccelerationStructure world = mesh.ray[rayID].volume_accel_solid;
+
+    // Pass the ray's origin and direction to the payload
+    payload.primitiveid = -1; // Initialize to -1 to indicate the point is
+
+    TracePoint(world, RAY_FLAG_NONE, 0xff, 0, 1, pointDesc, payload);
+
+    // Store the ID of the containing element in the hit buffer for CPU readback
+    record.hit[rayID].primitive_id = payload.primitiveid;
+}
+
+[shader("miss")]
+void tet_miss(uniform DPTetrahedronGeomData record, inout SolidRayFirePayload payload) {
+    payload.primitiveid = -1; // Mark the ray as outside all tetrahedra
+}
+
+[shader("closesthit")]
+void tet_contain_hit(uniform DPTetrahedronGeomData record, inout SolidRayFirePayload payload, in DPAttribute attr) {
+    payload.primitiveid = attr.global_prim_id; // Store the ID of the tet that contains the point
+}
+
+
+/* 1D ray generation intersection with a double precision Tetrahedron using the Plucker intersection algorithm*/
+[shader("intersection")]
+void DPTetrahedronPluckerIntersection(uniform DPTetrahedronGeomData record)
+{
+    int primID = PrimitiveIndex();
+    int global_prim_id = record.primitive_refs[primID].id;
+
+    uint rayID = DispatchRaysIndex().x;
+    uint nRays = DispatchRaysDimensions().x;
+    uint flags = RayFlags();
+
+    if (rayID >= nRays) {
+        return;
+    }
+
+    int4 indices = record.index[primID];
+    double3 v0 = record.vertex[indices[0]];
+    double3 v1 = record.vertex[indices[1]];
+    double3 v2 = record.vertex[indices[2]];
+    double3 v3 = record.vertex[indices[3]];
+
+    double3 origin = record.ray[rayID].origin;
+
+    bool inside = plucker_tet_containment_test(origin, v0, v1, v2, v3);
+
+    if (!inside) return;
+
+    // If we are inside the tet we need to report a hit to move through the rest of the RT pipeline
+    float f32t = 0.0f; // We dont care about intersection distance
+    uint hit_kind = 0; // No hit kind since it doesn't matter
+    
+    DPAttribute attr;
+    attr.global_prim_id = global_prim_id;
+
+    ReportHit(f32t, hit_kind, attr);
 }
 
 #endif // XDG_GPRT_TETRAHEDRON_RT_SHADERS_SLANG

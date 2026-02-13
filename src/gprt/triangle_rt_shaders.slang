@@ -54,7 +54,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     rayDesc.TMin = float(record.ray[rayID].tMin); 
     rayDesc.TMax = float(record.ray[rayID].tMax); 
 
-    SurfaceAccelerationStructure world = record.ray[rayID].volume_accel;
+    SurfaceAccelerationStructure world = record.ray[rayID].volume_accel_surf;
 
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
@@ -81,7 +81,7 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     rayDesc.TMin = float(record.ray[rayID].tMin); 
     rayDesc.TMax = float(record.ray[rayID].tMax); 
 
-    SurfaceAccelerationStructure world = record.ray[rayID].volume_accel;
+    SurfaceAccelerationStructure world = record.ray[rayID].volume_accel_surf;
 
     // Pass the ray's origin and direction to the payload
     payload.surf_id = -1;
