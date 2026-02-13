@@ -79,10 +79,6 @@ public:
     }
   }
 
-  int num_vertices() const override {
-    return mesh()->n_nodes();
-  }
-
   int num_volume_elements(MeshID volume) const override {
     return get_volume_elements(volume).size();
   }
@@ -101,11 +97,17 @@ public:
     return surface_map_.at(surface).size();
   }
 
+  int num_vertices() const override;
+
   std::vector<MeshID> get_volume_elements(MeshID volume) const;
 
   std::vector<MeshID> get_surface_faces(MeshID surface) const override;
 
   std::vector<Vertex> element_vertices(MeshID element) const override;
+
+  std::vector<MeshID> element_connectivity(MeshID element) const override;
+
+  Vertex vertex_coordinates(MeshID vertex) const override;
 
   std::array<Vertex, 3> face_vertices(MeshID triangle) const override;
 

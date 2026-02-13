@@ -54,10 +54,6 @@ public:
   void add_surface_to_volume(MeshID volume, MeshID surface, Sense sense, bool overwrite=false) override;
 
   // Mesh
-  int num_vertices() const override {
-    return this->mb_direct()->n_vertices();
-  }
-
   int num_volume_elements(MeshID volume) const override;
 
   int num_volume_elements() const override;
@@ -66,9 +62,15 @@ public:
 
   int num_surface_faces(MeshID surface) const override;
 
+  int num_vertices() const override;
+
   std::vector<MeshID> get_volume_elements(MeshID volume) const override;
 
   std::vector<MeshID> get_surface_faces(MeshID surface) const override;
+
+  std::vector<MeshID> element_connectivity(MeshID element) const override;
+
+  Vertex vertex_coordinates(MeshID vertex) const override;
 
   std::vector<Vertex> element_vertices(MeshID element) const override;
 

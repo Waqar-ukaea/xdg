@@ -56,10 +56,6 @@ public:
     return -1;
   }
 
-  virtual int num_vertices() const override {
-    return vertices_.size();
-  }
-
   virtual int num_volume_elements(MeshID volume) const override {
     if (!volumetric_elements_) return 0;
     return 12;
@@ -71,6 +67,10 @@ public:
 
   virtual int num_surface_faces(MeshID surface) const override {
     return 2;
+  }
+
+  virtual int num_vertices() const override {
+    return vertices_.size();
   }
 
   // Lists
@@ -216,7 +216,7 @@ public:
     return element_adjacencies_.at(element)[face];
   }
 
-    virtual double element_volume(MeshID element) const override {
+  virtual double element_volume(MeshID element) const override {
     const auto& conn = tetrahedron_connectivity()[element];
     std::array<Vertex, 4> verts = {
       vertices()[conn[0]],
@@ -241,6 +241,14 @@ public:
 
   inline int vertex_index(MeshID vertex) const override {
     return static_cast<int>(vertex);
+  }
+
+  virtual Vertex vertex_coordinates(MeshID vertex_id) const override {
+    return vertices().at(vertex_id);
+  }
+
+  virtual std::vector<MeshID> element_connectivity(MeshID element) const override {
+    return {tetrahedron_connectivity().at(element).begin(), tetrahedron_connectivity().at(element).end()};
   }
 
   // Other
