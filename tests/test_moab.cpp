@@ -1,4 +1,6 @@
 // stl includes
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <numeric>
 
@@ -138,105 +140,69 @@ TEST_CASE("MOAB Element Types")
   }
 }
 
-TEMPLATE_TEST_CASE("MOAB Get Surface Mesh", "[moab][surface]",
-                   Embree_Raytracer,
-                   GPRT_Raytracer)
+TEST_CASE("MOAB Get Surface Connectivity", "[moab][surface]")
 {
-  constexpr auto rt_backend = TestType::value;
+  std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB);
+  REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
+  const auto& mesh_manager = xdg->mesh_manager();
+  mesh_manager->load_file("small-tet-mesh.h5m");
+  mesh_manager->init();
 
-  DYNAMIC_SECTION(fmt::format("Backend = {}", rt_backend)) {
-    check_ray_tracer_supported(rt_backend); // skip if backend not enabled at configuration time
-    std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB, rt_backend);
-    REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
-    const auto& mesh_manager = xdg->mesh_manager();
-    mesh_manager->load_file("overlap-edge.h5m");
-    mesh_manager->init();
+  REQUIRE(mesh_manager->num_volumes() == 2);
+  REQUIRE(mesh_manager->num_surfaces() == 4);
+  REQUIRE(mesh_manager->num_surface_faces(1) == 4);
+  REQUIRE(mesh_manager->num_surface_faces(2) == 4);
+  REQUIRE(mesh_manager->num_surface_faces(3) == 4);
+  REQUIRE(mesh_manager->num_surface_faces(4) == 4);
 
-    float fpTol = 1e-5;
+  std::vector<std::vector<int>> expected_connectivity = {
+    {3, 5, 0, 5, 4, 1, 4, 3, 2, 3, 4, 5}, /* Surface 0 (id 1) */
+    {4, 3, 1, 3, 5, 0, 5, 4, 2, 4, 5, 3}, /* Surface 1 (id 2) */
+    {4, 3, 0, 3, 5, 1, 5, 4, 2, 4, 5, 3}, /* Surface 2 (id 3) */
+    {4, 3, 1, 3, 5, 0, 5, 4, 2, 4, 5, 3}  /* Surface 3 (id 4) */
+  };
 
-    // Define the expected connectivity and vertices for each surface
-    std::vector<std::vector<int>> expected_connectivity = {
-        {2, 3, 5, 3, 0, 4, 5, 4, 1, 3, 4, 5},                   /* Surface 1 */
-        {5, 4, 1, 4, 7, 3, 2, 3, 6, 4, 5, 7, 5, 0, 7, 7, 6, 3}, /* Surface 2 */
-        {5, 0, 7, 5, 4, 2, 1, 3, 6, 3, 4, 7, 4, 5, 7, 3, 7, 6}, /* Surface 3 */
-        {5, 4, 0, 3, 4, 6, 1, 3, 6, 4, 5, 7, 5, 2, 7, 4, 7, 6}, /* Surface 4 */
-        {3, 0, 4, 5, 1, 3, 5, 3, 4, 5, 4, 2},                   /* Surface 5 */
-        {4, 5, 6, 0, 5, 3, 7, 2, 4, 4, 3, 5, 7, 4, 6, 7, 6, 1}, /* Surface 6 */
-        {6, 4, 5, 3, 5, 4, 1, 5, 3, 7, 0, 4, 7, 4, 6, 7, 6, 2}, /* Surface 7 */
-        {3, 6, 4, 1, 5, 3, 7, 2, 4, 3, 5, 6, 7, 4, 6, 7, 6, 0}  /* Surface 8 */
-    };
-
-    std::vector<std::vector<Vertex>> expected_vertices = {
-        // Surface 1
-        {
-            {0.5, -0.866025, -1.5}, {-1, 0.0, -1.5}, {0.5, 0.866025, -1.5},
-            {0.5, 0, -1.5}, {-0.25, -0.433013, -1.5}, {-0.25, 0.433013, -1.5}
-        },
-        // Surface 2
-        {
-            {0.5, -0.866025, -1.5}, {-1, 0.0, -1.5}, {0, 0, 1.5},
-            {-0.333333, 0.0, 0.5}, {-0.666667, 0.0, -0.5},
-            {-0.25, -0.433013, -1.5}, {0.166667, -0.288675, 0.5}, {0.333333, -0.57735, -0.5}
-        },
-        // Surface 3
-        {
-            {-1, 0.0, -1.5}, {0, 0, 1.5}, {0.5, 0.866025, -1.5},
-            {0.166667, 0.288675, 0.5}, {0.333333, 0.57735, -0.5}, {-0.25, 0.433013, -1.5},
-            {-0.333333, 0.0, 0.5}, {-0.666667, 0.0, -0.5}
-        },
-        // Surface 4
-        {
-            {0.5, -0.866025, -1.5}, {0, 0, 1.5}, {0.5, 0.866025, -1.5},
-            {0.166667, -0.288675, 0.5}, {0.333333, -0.57735, -0.5}, {0.5, 0, -1.5},
-            {0.166667, 0.288675, 0.5}, {0.333333, 0.57735, -0.5}
-        },
-        // Surface 5
-        {
-            {0.5, 1.71603, 1.5}, {0.5, -0.0160254, 1.5}, {-1, 0.85, 1.5},
-            {0.5, 0.85, 1.5}, {-0.25, 1.28301, 1.5}, {-0.25, 0.416987, 1.5}
-        },
-        // Surface 6
-        {
-            {0, 0.85, -1.5}, {0.5, -0.0160254, 1.5}, {-1, 0.85, 1.5},
-            {-0.333333, 0.85, -0.5}, {-0.666667, 0.85, 0.5}, {0.166667, 0.561325, -0.5},
-            {0.333333, 0.27265, 0.5}, {-0.25, 0.416987, 1.5}
-        },
-        // Surface 7
-        {
-            {0.5, 1.71603, 1.5}, {0, 0.85, -1.5}, {-1, 0.85, 1.5},
-            {0.166667, 1.13868, -0.5}, {0.333333, 1.42735, 0.5}, {-0.333333, 0.85, -0.5},
-            {-0.666667, 0.85, 0.5}, {-0.25, 1.28301, 1.5}
-        },
-        // Surface 8
-        {
-            {0.5, 1.71603, 1.5}, {0, 0.85, -1.5}, {0.5, -0.0160254, 1.5},
-            {0.166667, 0.561325, -0.5}, {0.333333, 0.27265, 0.5}, {0.166667, 1.13868, -0.5},
-            {0.333333, 1.42735, 0.5}, {0.5, 0.85, 1.5}
-        }
-    };
-
-    size_t surface_index = 0;
-    for (const auto surface : mesh_manager->surfaces()) {
-      auto surfaceMesh = mesh_manager->get_surface_mesh(surface);
-      auto vertices = surfaceMesh.first;
-      auto connectivity = surfaceMesh.second;
-
-      // Test connectivity
-      REQUIRE(connectivity.size() == expected_connectivity[surface_index].size());
-      for (size_t i = 0; i < connectivity.size(); ++i) {
-        REQUIRE(connectivity[i] == expected_connectivity[surface_index][i]);
-      }
-
-      // Test vertices
-      REQUIRE(vertices.size() == expected_vertices[surface_index].size());
-      for (size_t i = 0; i < vertices.size(); ++i) {
-        REQUIRE_THAT(vertices[i].x, Catch::Matchers::WithinAbs(expected_vertices[surface_index][i].x, fpTol));
-        REQUIRE_THAT(vertices[i].y, Catch::Matchers::WithinAbs(expected_vertices[surface_index][i].y, fpTol));
-        REQUIRE_THAT(vertices[i].z, Catch::Matchers::WithinAbs(expected_vertices[surface_index][i].z, fpTol));
-      }
-
-      ++surface_index;
+  size_t surface_index = 0;
+  for (const auto surface : mesh_manager->surfaces()) {
+    auto connectivity = mesh_manager->get_surface_connectivity(surface);
+    REQUIRE(connectivity.size() == expected_connectivity[surface_index].size());
+    for (size_t i = 0; i < connectivity.size(); ++i) {
+      REQUIRE(connectivity[i] == expected_connectivity[surface_index][i]);
     }
+
+    ++surface_index;
+  }
+}
+
+TEST_CASE("MOAB Get Volume Connectivity", "[moab][volume]")
+{
+  std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB);
+  REQUIRE(xdg->mesh_manager()->mesh_library() == MeshLibrary::MOAB);
+  const auto& mesh_manager = xdg->mesh_manager();
+  mesh_manager->load_file("small-tet-mesh.h5m");
+  mesh_manager->init();
+
+  REQUIRE(mesh_manager->num_volumes() == 2);
+  REQUIRE(mesh_manager->num_surfaces() == 4);
+  REQUIRE(mesh_manager->num_volume_elements(1) == 8);
+  REQUIRE(mesh_manager->num_volume_elements(mesh_manager->implicit_complement()) == 0);
+
+  std::vector<int> expected_connectivity = {
+    0, 1, 2, 3,
+    1, 4, 5, 6,
+    2, 5, 7, 8,
+    3, 6, 8, 9,
+    8, 3, 2, 1,
+    8, 2, 5, 1,
+    8, 5, 6, 1,
+    8, 6, 3, 1
+  };
+
+  REQUIRE(mesh_manager->volumes().size() == 2);
+  auto connectivity = mesh_manager->get_volume_connectivity(mesh_manager->volumes()[0]);
+  REQUIRE(connectivity.size() == expected_connectivity.size());
+  for (size_t i = 0; i < connectivity.size(); ++i) {
+    REQUIRE(connectivity[i] == expected_connectivity[i]);
   }
 }
 

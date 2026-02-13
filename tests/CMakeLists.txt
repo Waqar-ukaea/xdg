@@ -71,6 +71,8 @@ jezebel.exo
 jezebel.h5m
 pincell.h5m
 pincell-implicit.exo
+small-tet-mesh.h5m
+small-tet-mesh.exo
 )
 
 foreach(file ${TEST_FILES})
