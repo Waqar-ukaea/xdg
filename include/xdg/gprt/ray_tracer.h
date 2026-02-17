@@ -129,16 +129,6 @@ class GPRTRayTracer : public RayTracer {
       return context_;
     }
 
-    SurfaceAccelerationStructure* tlas_handle_device_ptr() const
-    {
-      return gprtBufferGetDevicePointer(tlas_handle_buffer_);
-    }
-
-    size_t tlas_handle_count() const
-    {
-      return tlas_handles_.size();
-    }
-
   private:
 
     // GPRT objects 
@@ -148,9 +138,8 @@ class GPRTRayTracer : public RayTracer {
     GPRTAccel world_; 
     GPRTBuildParams buildParams_; //<! Build parameters for acceleration structures
 
-    // Shader programs
+    // Map of RayGen programs handled by this ray tracer
     std::map<RayGenType, GPRTRayGenOf<dblRayGenData>> rayGenPrograms_;
-
     GPRTMissOf<void> missProgram_; 
     GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
     
@@ -180,6 +169,7 @@ class GPRTRayTracer : public RayTracer {
     void update_tlas_table_();
     void update_meshid_to_sense_();
 
+    // Internal GPRT helper method to upload data to device buffers, creating or resizing as needed
     template <typename T>
     void upload_device_buffer_(GPRTBufferOf<T>& buf, const std::vector<T>& host_data)
     {
@@ -199,8 +189,6 @@ class GPRTRayTracer : public RayTracer {
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};
     GPRTAccel global_element_accel_ {nullptr}; 
-
   };
-
 } // namespace xdg
 #endif // include guard

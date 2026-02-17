@@ -163,6 +163,7 @@ Direction surface_normal(MeshID surface,
     ray_tracing_interface_ = ray_tracing_interface;
   }
 
+  // Resize buffers (if necessary) and return device pointers for ray and hit data
   DeviceRayHitBuffers get_device_rayhit_buffers(const size_t requiredCapacity)
   {
     return ray_tracing_interface()->get_device_rayhit_buffers(requiredCapacity);

@@ -1,7 +1,7 @@
 #include "../../include/xdg/gprt/shared_structs.h"
 
 [[vk::push_constant]]
-dblRayFirePushConstants PC;
+dblPushConstants PC;
 
 struct RayFirePayload {
     double distance;    // Distance to intersection
@@ -71,7 +71,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     payload.surf_id = -1;
     payload.tlas = world;
 
-    if (ray.enabled == 1u) {
+    if (ray.enabled == 1u) { // skip traversal for rays that are marked as disabled
         TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
     }
 
@@ -102,7 +102,7 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     payload.tlas = world;
     payload.piv = xdg::PointInVolume::OUTSIDE; // Initialize point in volume check result to outside (0)
     
-    if (ray.enabled == 1u) { // skip RT pipeline for rays that are marked as disabled 
+    if (ray.enabled == 1u) { // skip traversal for rays that are marked as disabled 
         TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
     }
 

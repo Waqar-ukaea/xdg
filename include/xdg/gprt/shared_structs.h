@@ -8,6 +8,7 @@
 struct GPRTPrimitiveRef
 {
   int id; // ID of the primitive
+  // TODO - What else do we need here? Perhaps a flag for exclude prims?
 };
 
 
@@ -20,7 +21,6 @@ struct DPTriangleGeomData {
   int surf_id;
   int* meshid_to_sense; // MeshID -> sense (+1 forward, -1 reverse)
   xdg::dblRay *ray; // double precision rays
-  xdg::HitOrientation hitOrientation;
   GPRTPrimitiveRef* primitive_refs;
   int num_faces; // Number of faces in the geometry
 };
@@ -33,8 +33,7 @@ struct dblRayGenData {
 
 /* A small structure of constants that can change every frame without rebuilding the
   shader binding table. (must be 128 bytes or less) */
-
-struct dblRayFirePushConstants {
+struct dblPushConstants {
   double tMax;
   double tMin;
   xdg::HitOrientation hitOrientation;

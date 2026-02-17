@@ -21,11 +21,13 @@ struct dblRay
   double3 direction;
   int volume_mesh_id; // MeshID of the volume this ray will be traced against
   uint enabled; // Flag to indicate if the ray is active
+  // TODO - Implement exclude primtives functionality. Right now these are essentially just stubs.
   int32_t* exclude_primitives; // Optional for excluding primitives
   int32_t exclude_count; // Number of excluded primitives
 };
 
 
+// TODO - Should we define separate hit structs for PIV and ray-fire or do we think its better to keep them together?
 struct dblHit 
 {
   double distance;

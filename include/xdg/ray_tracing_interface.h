@@ -40,8 +40,8 @@ struct DeviceRayHitBuffers {
   void* rayDevPtr;
   void* hitDevPtr;
   size_t capacity; // Number of rays the buffer can hold
-  size_t rayStride; // Bytes between ray elements - sizeof(dblRay)
-  size_t hitStride; // Bytes between hit elements - sizeof(dblHit)
+  size_t rayStride; // Bytes between ray elements - currently set to sizeof(dblRay) but in theory allows for future flexibility
+  size_t hitStride; // Bytes between hit elements - currently set to sizeof(dblHit) but in theory allows for future flexibility
 };
 
 /**
@@ -275,8 +275,6 @@ protected:
   ElementTreeID next_element_tree_id_ {0};
   double numerical_precision_ {1e-3};
 };
-
 } // namespace xdg
-
 
 #endif // include guard

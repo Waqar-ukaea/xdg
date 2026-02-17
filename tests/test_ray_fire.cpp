@@ -10,8 +10,6 @@
 #include "mesh_mock.h"
 #include "util.h"
 
-#include <chrono>
-
 using namespace xdg;
 using namespace xdg::test;
 
