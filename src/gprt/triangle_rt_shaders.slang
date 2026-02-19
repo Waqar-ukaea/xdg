@@ -43,7 +43,7 @@ void ray_fire_miss(inout SurfaceRayFirePayload payload) {
 // This ray generation program will kick off the ray tracing process,
 // generating rays and tracing them into the world.
 [shader("raygeneration")]
-void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
+void ray_fire(uniform dblRayGenData record) {
     SurfaceRayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
@@ -61,7 +61,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     payload.surf_id = -1;
     payload.tlas = world;
 
-    TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    TraceRay(world, RAY_FLAG_NONE, 0xff, xdg::RT_SURFACE_RAY_INDEX, xdg::RT_SURFACE_MISS_INDEX, rayDesc, payload);
 
     // Store the distance to the hit point and the surface ID in buffers for CPU
     record.hit[rayID].distance = payload.distance;
@@ -70,7 +70,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
 }
 
 [shader("raygeneration")]
-void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
+void point_in_volume(uniform dblRayGenData record) {
     SurfaceRayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
 
@@ -88,7 +88,7 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
     payload.tlas = world;
     payload.piv = xdg::PointInVolume::OUTSIDE; // Initialize point in volume check result to outside (0)
     
-    TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    TraceRay(world, RAY_FLAG_NONE, 0xff, xdg::RT_SURFACE_RAY_INDEX, xdg::RT_SURFACE_MISS_INDEX, rayDesc, payload);
 
     record.hit[rayID].surf_id = payload.surf_id;
     record.hit[rayID].piv = payload.piv; // Point in volume check result

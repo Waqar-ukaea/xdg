@@ -5,7 +5,7 @@ namespace xdg {
 
 GPRTRayTracer::GPRTRayTracer()
 {
-  gprtRequestRayTypeCount(numRayTypes_); // Set the number of shaders which can be set to the same geometry
+  gprtRequestRayTypeCount(RT_NUM_RAY_TYPES); 
   context_ = gprtContextCreate();
   module_ = gprtModuleCreate(context_, dbl_deviceCode);
 
@@ -30,6 +30,10 @@ GPRTRayTracer::GPRTRayTracer()
   rayGenPIVData->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   rayGenPIVData->hit = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
 
+  dblRayGenData* rayGenFindElementData = gprtRayGenGetParameters(rayGenPrograms_.at(RayGenType::FIND_ELEMENT));
+  rayGenFindElementData->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
+  rayGenFindElementData->hit = gprtBufferGetDevicePointer(rayHitBuffers_.hit);
+
   // Set up build parameters for acceleration structures
   buildParams_.buildMode = GPRT_BUILD_MODE_FAST_BUILD_NO_UPDATE;
 }
@@ -41,8 +45,13 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtComputeSynchronize(context_);
 
 
-  // Destroy TLAS structures
+  // Destroy TLAS structures for surface trees
   for (const auto& [tree, accel] : surface_volume_tree_to_accel_map) {
+    gprtAccelDestroy(accel);
+  }
+
+  // Destroy TLAS structures for element trees
+  for (const auto& [tree, accel] : element_volume_tree_to_accel_map) {
     gprtAccelDestroy(accel);
   }
 
@@ -56,6 +65,7 @@ GPRTRayTracer::~GPRTRayTracer()
     gprtGeomDestroy(geom);
   }
   gprtGeomTypeDestroy(trianglesGeomType_);
+  gprtGeomTypeDestroy(tetrahedraGeomType_);
 
   // Destroy Buffers
   gprtBufferDestroy(rayHitBuffers_.ray);
@@ -72,16 +82,24 @@ void GPRTRayTracer::setup_shaders()
   // Set up ray generation and miss programs
   rayGenPrograms_[RayGenType::RAY_FIRE] = gprtRayGenCreate<dblRayGenData>(context_, module_, "ray_fire");
   rayGenPrograms_[RayGenType::POINT_IN_VOLUME] = gprtRayGenCreate<dblRayGenData>(context_, module_, "point_in_volume");
+  rayGenPrograms_[RayGenType::FIND_ELEMENT] = gprtRayGenCreate<dblRayGenData>(context_, module_, "find_element");
   // TODO: Add Occluded and closest raygen entry points
 
-  missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
+  triangleMissProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
+  tetMissProgram_ = gprtMissCreate<void>(context_, module_, "tet_miss");
+
   aabbTriPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_tri_aabbs");
   aabbTetPopulationProgram_ = gprtComputeCreate<DPTetrahedronGeomData>(context_, module_, "populate_tet_aabbs");
 
   // Create a "triangle" geometry type and set its closest-hit program
   trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
-  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 0, module_, "ray_fire_hit"); // closesthit for ray queries
-  gprtGeomTypeSetIntersectionProg(trianglesGeomType_, 0, module_, "DPTrianglePluckerIntersection"); // set intersection program for double precision rays
+  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, RT_SURFACE_RAY_INDEX, module_, "ray_fire_hit"); // closesthit for ray queries
+  gprtGeomTypeSetIntersectionProg(trianglesGeomType_, RT_SURFACE_RAY_INDEX, module_, "DPTrianglePluckerIntersection"); // set intersection program for double precision rays against triangles
+
+  // Create a "tetrahedron" geometry type and set its closest-hit program
+  tetrahedraGeomType_ = gprtGeomTypeCreate<DPTetrahedronGeomData>(context_, GPRT_AABBS);
+  gprtGeomTypeSetClosestHitProg(tetrahedraGeomType_, RT_VOLUME_RAY_INDEX, module_, "tet_contain_hit"); // closesthit for point-in-volume queries
+  gprtGeomTypeSetIntersectionProg(tetrahedraGeomType_, RT_VOLUME_RAY_INDEX, module_, "DPTetrahedronPluckerIntersection"); // set intersection program for double precision rays against tetrahedra
 }
 
 void GPRTRayTracer::init() 
@@ -173,8 +191,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
 
     gprtAccelBuild(context_, blas, buildParams_);
 
-    gprt::Instance instance;
-    instance = gprtAccelGetInstance(blas); // create instance of BLAS to be added to TLAS
+    gprt::Instance instance = gprtAccelGetInstance(blas); // create instance of BLAS to be added to TLAS
     instance.mask = 0xff; // mask can be used to filter instances during ray traversal. 0xff ensures no filtering
 
     // Store in maps
@@ -219,7 +236,8 @@ GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_mana
 
   DPTetrahedronGeomData* geom_data = nullptr;
   auto tetrahedraGeom = gprtGeomCreate<DPTetrahedronGeomData>(context_, tetrahedraGeomType_);
-  
+  geom_data = gprtGeomGetParameters(tetrahedraGeom); // pointer to assign data to
+
   auto vertices = mesh_manager->get_volume_vertices(volume_id);
   auto indices = mesh_manager->get_volume_connectivity(volume_id);
   std::vector<double3> dbl3Vertices;
@@ -235,8 +253,18 @@ GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_mana
     ui4Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2], indices[i + 3]);
   }
 
+  // Get storage for prim IDs
+  std::vector<GPRTPrimitiveRef> primitive_refs;
+  primitive_refs.reserve(mesh_manager->num_volume_elements(volume_id));
+  for (const auto &element : mesh_manager->get_volume_elements(volume_id)) {
+    GPRTPrimitiveRef prim_ref;
+    prim_ref.id = element;
+    primitive_refs.push_back(prim_ref);
+  }
+
   auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
   auto connectivity_buffer = gprtDeviceBufferCreate<uint4>(context_, ui4Indices.size(), ui4Indices.data());
+  auto primitive_refs_buffer = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, primitive_refs.size(), primitive_refs.data());
   auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*volume_elements.size(), 0); // AABBs for each tetrahedron
   gprtAABBsSetPositions(tetrahedraGeom, aabb_buffer, volume_elements.size(), 2*sizeof(float3), 0);
   
@@ -245,14 +273,21 @@ GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_mana
   geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
   geom_data->num_tets = volume_elements.size();
   geom_data->vol_id = volume_id;
+  geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
+  geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
 
   gprtComputeLaunch(aabbTetPopulationProgram_, {volume_elements.size(), 1, 1}, {1, 1, 1}, *geom_data);
 
-  GPRTAccel volume_element_accel = gprtAABBAccelCreate(context_, tetrahedraGeom, buildParams_.buildMode);
+  GPRTAccel blas = gprtAABBAccelCreate(context_, tetrahedraGeom, buildParams_.buildMode);
+  gprtAccelBuild(context_, blas, buildParams_);
+  gprt::Instance instance = gprtAccelGetInstance(blas); // create instance of BLAS to be added to TLAS
+  instance.mask = 0xff; // mask can be used to filter instances during ray traversal. 0xff ensures no filtering
 
-  gprtAccelBuild(context_, volume_element_accel, buildParams_);
+  auto instanceBuffer = gprtDeviceBufferCreate<gprt::Instance>(context_, 1, &instance);
+  GPRTAccel volume_tlas = gprtInstanceAccelCreate(context_, 1, instanceBuffer);
+  gprtAccelBuild(context_, volume_tlas, buildParams_);
 
-  // element_volume_tree_to_accel_map[tree] = volume_element_accel;
+  element_volume_tree_to_accel_map[tree] = volume_tlas;
 
   return tree;
 };
@@ -410,6 +445,41 @@ void GPRTRayTracer::check_ray_buffer_capacity(size_t N)
   }
 
   gprtBuildShaderBindingTable(context_, static_cast<GPRTBuildSBTFlags>(GPRT_SBT_GEOM | GPRT_SBT_RAYGEN));
+}
+
+MeshID GPRTRayTracer::find_element(const Position& point) const
+{
+  return find_element(global_element_tree_, point);
+}
+
+MeshID GPRTRayTracer::find_element(TreeID tree, const Position& point) const
+{
+
+  GPRTAccel volume = element_volume_tree_to_accel_map.at(tree);
+  auto rayGen = rayGenPrograms_.at(RayGenType::FIND_ELEMENT);
+  dblRayGenData* rayGenData = gprtRayGenGetParameters(rayGen);
+  
+  gprtBufferMap(rayHitBuffers_.ray); // Update the ray input buffer
+  dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
+  ray[0].volume_accel_solid = gprtAccelGetDeviceAddress(volume);
+  ray[0].origin = {point.x, point.y, point.z};
+  ray[0].volume_tree = tree; // Set the TreeID of the volume being queried
+
+  gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
+  
+  gprtRayGenLaunch1D(context_, rayGen, 1); // Launch raygen shader (entry point to RT pipeline)
+  gprtGraphicsSynchronize(context_); // Ensure all GPU operations are complete before returning control flow to CPU
+                                                  
+  // Retrieve the hit from the dblHit buffer
+  gprtBufferMap(rayHitBuffers_.hit);
+  dblHit* hit = gprtBufferGetHostPointer(rayHitBuffers_.hit);
+  auto primitive_id = hit[0].primitive_id;
+  gprtBufferUnmap(rayHitBuffers_.hit); // required to sync buffer back on GPU? Maybe this second unmap isn't actually needed since we dont need to resyncrhonize after retrieving the data from device
+  
+  if (primitive_id == -1)
+    return ID_NONE;
+  else
+    return primitive_id;
 }
 
 } // namespace xdg

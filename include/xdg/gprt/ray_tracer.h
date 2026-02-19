@@ -22,7 +22,8 @@ enum class RayGenType {
   RAY_FIRE,
   POINT_IN_VOLUME,
   OCCLUDED,
-  CLOSEST
+  CLOSEST,
+  FIND_ELEMENT
 };
 
 struct gprtRayHit {
@@ -49,16 +50,9 @@ class GPRTRayTracer : public RayTracer {
     // Setup the different shader programs for use with this ray tracer
     void setup_shaders();
 
-    MeshID find_element(const Position& point) const override
-    {
-      fatal_error("Element trees not currently supported with GPRT ray tracer");
-      return ID_NONE;
-    };
+    MeshID find_element(const Position& point) const override;
 
-    MeshID find_element(TreeID tree, const Position& point) const override {
-      fatal_error("Element trees not currently supported with GPRT ray tracer");
-      return ID_NONE;
-    };
+    MeshID find_element(TreeID tree, const Position& point) const override;
 
     std::pair<TreeID, TreeID>
     register_volume(const std::shared_ptr<MeshManager>& mesh_manager, 
@@ -114,7 +108,8 @@ class GPRTRayTracer : public RayTracer {
     // Shader programs
     std::map<RayGenType, GPRTRayGenOf<dblRayGenData>> rayGenPrograms_;
 
-    GPRTMissOf<void> missProgram_; 
+    GPRTMissOf<void> triangleMissProgram_; 
+    GPRTMissOf<void> tetMissProgram_; 
     GPRTComputeOf<DPTriangleGeomData> aabbTriPopulationProgram_; //<! AABB population program for double precision rays against triangle geometries
     GPRTComputeOf<DPTetrahedronGeomData> aabbTetPopulationProgram_; //<! AABB population program for double precision rays against tetrahedron geometries
 
@@ -128,7 +123,7 @@ class GPRTRayTracer : public RayTracer {
     GPRTGeomTypeOf<DPTetrahedronGeomData> tetrahedraGeomType_; //<! Geometry type for tetrahedra (not currently supported)
 
     // Ray Generation parameters
-    uint32_t numRayTypes_ = 1; // <! Number of ray types. Allows multiple shaders to be set to the same geometery
+    uint32_t numRayTypes_ = 2; // <! Number of ray types. 0=surface, 1=volume
     
     // Mesh-to-Scene maps 
     std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry

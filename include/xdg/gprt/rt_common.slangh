@@ -99,8 +99,10 @@ bool plucker_tet_containment_test(in double3 point,
     // Vector from v0 to point
     double3 rhs = point - v0;
 
-    // Solve T * [λ1, λ2, λ3] = rhs
-    double3 lambda123 = mul(inverse3x3(T), double3(rhs.x, rhs.y, rhs.z));
+    // Solve T * [λ1, λ2, λ3] = rhs.
+    // In Slang, mul(matrix, vector) is lowered as vector-times-matrix on shader backends,
+    // so transpose the inverse to preserve CPU-side convention.
+    double3 lambda123 = mul(transpose(inverse3x3(T)), double3(rhs.x, rhs.y, rhs.z));
 
     // Compute λ0
     double lambda0 = double(1.0) - (lambda123.x + lambda123.y + lambda123.z);

@@ -2,6 +2,14 @@
 #include "../shared_enums.h"
 #include "../geometry/dp_math.h"
 
+
+namespace xdg {
+  static const uint RT_SURFACE_RAY_INDEX = 0; // SBT ray index for surface ray queries
+  static const uint RT_VOLUME_RAY_INDEX = 1; // SBT ray index for volumetric ray queries 
+  static const uint RT_NUM_RAY_TYPES = 2; // total number of ray types (surface and volume)
+  static const uint RT_SURFACE_MISS_INDEX = 0; // SBT ray index for surface ray miss shader
+  static const uint RT_VOLUME_MISS_INDEX = 1; // SBT ray index for
+}
 struct GPRTPrimitiveRef
 {
   int id; // ID of the primitive

@@ -30,26 +30,26 @@ populate_tet_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTetrah
 }
 
 [shader("raygeneration")]
-void find_element(uniform dblRayGenData record, uniform DPTetrahedronGeomData mesh) {
+void find_element(uniform dblRayGenData record) {
     // This shader is only used to find the element containing a point, so we can ignore the raygen data and just use the ray's origin as the point to test for containment
     SolidRayFirePayload payload;
     uint rayID = DispatchRaysIndex().x;
     PointDesc pointDesc;
-    pointDesc.Origin = float3(mesh.ray[rayID].origin);
+    pointDesc.Origin = float3(record.ray[rayID].origin);
 
-    SolidAccelerationStructure world = mesh.ray[rayID].volume_accel_solid;
+    SolidAccelerationStructure world = record.ray[rayID].volume_accel_solid;
 
     // Pass the ray's origin and direction to the payload
     payload.primitiveid = -1; // Initialize to -1 to indicate the point is
 
-    TracePoint(world, RAY_FLAG_NONE, 0xff, 0, 1, pointDesc, payload);
+    TracePoint(world, RAY_FLAG_NONE, 0xff, xdg::RT_VOLUME_RAY_INDEX, xdg::RT_VOLUME_MISS_INDEX, pointDesc, payload);
 
     // Store the ID of the containing element in the hit buffer for CPU readback
-    record.hit[rayID].primitive_id = payload.primitiveid;
+    record.hit[rayID].primitive_id = payload.primitiveid; // we're reusing dblHit's primitive_id field to store the ID of the containing element since we don't need hit distance or surf_id for this shader
 }
 
 [shader("miss")]
-void tet_miss(uniform DPTetrahedronGeomData record, inout SolidRayFirePayload payload) {
+void tet_miss(inout SolidRayFirePayload payload) {
     payload.primitiveid = -1; // Mark the ray as outside all tetrahedra
 }
 
@@ -79,11 +79,9 @@ void DPTetrahedronPluckerIntersection(uniform DPTetrahedronGeomData record)
     double3 v1 = record.vertex[indices[1]];
     double3 v2 = record.vertex[indices[2]];
     double3 v3 = record.vertex[indices[3]];
-
     double3 origin = record.ray[rayID].origin;
 
     bool inside = plucker_tet_containment_test(origin, v0, v1, v2, v3);
-
     if (!inside) return;
 
     // If we are inside the tet we need to report a hit to move through the rest of the RT pipeline
@@ -92,7 +90,6 @@ void DPTetrahedronPluckerIntersection(uniform DPTetrahedronGeomData record)
     
     DPAttribute attr;
     attr.global_prim_id = global_prim_id;
-
     ReportHit(f32t, hit_kind, attr);
 }
 
