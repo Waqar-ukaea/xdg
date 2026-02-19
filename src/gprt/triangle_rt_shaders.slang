@@ -100,18 +100,10 @@ void point_in_volume(uniform dblRayGenData record) {
 [numthreads(1, 1, 1)]
 void
 populate_tri_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGeomData record) {
-    int primID = DispatchThreadID.x;
-    int3 indices = record.index[primID];
-    double3 A = record.vertex[indices[0]];
-    double3 B = record.vertex[indices[1]];
-    double3 C = record.vertex[indices[2]];
-    double3 dpaabbmin = min(min(A, B), C);
-    double3 dpaabbmax = max(max(A, B), C);
-    float3 fpaabbmin = float3(dpaabbmin - float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
-    float3 fpaabbmax = float3(dpaabbmax + float3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
-
-    record.aabbs[2 * primID] = fpaabbmin;
-    record.aabbs[2 * primID + 1] = fpaabbmax;
+    uint primID = DispatchThreadID.x;
+    uint3 indices = record.index[primID];
+    uint vertexIndices[3] = {indices.x, indices.y, indices.z};
+    populate_aabb<3>(primID, record.vertex, record.aabbs, vertexIndices);
 }
 
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------

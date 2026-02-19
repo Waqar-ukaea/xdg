@@ -17,9 +17,31 @@ struct DPAttribute
 
 static const double PLUCKER_ZERO_TOL = double(20.0) * DBL_EPSILON;
 
-double3x3 inverse3x3(in double3x3 matrix);
-
 // ------------------------------------------------- Helper functions -------------------------------------------------
+
+// Templated/generic function to compute AABBs in double precision and fill the float AABB buffer. Generic to handle triangles, tets and future primitives with different numbers of vertices
+__generic<int N>
+inline void populate_aabb(uint primID, double3 *vertex, float3 *aabb, uint indices[N])
+{
+    double3 dpAabbMin = vertex[indices[0]];
+    double3 dpAabbMax = dpAabbMin;
+
+    // unroll the loop since N is known to be small(ish) at compile time to keep performance
+    [unroll] 
+    for (uint i = 1; i < N; ++i)
+    {
+        double3 vert = vertex[indices[i]];
+        dpAabbMin = min(dpAabbMin, vert);
+        dpAabbMax = max(dpAabbMax, vert);
+    }
+
+    float3 fpAabbMin = float3(dpAabbMin - double3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
+    float3 fpAabbMax = float3(dpAabbMax + double3(FLT_EPSILON, FLT_EPSILON, FLT_EPSILON));
+
+    aabb[2 * primID] = fpAabbMin;
+    aabb[2 * primID + 1] = fpAabbMax;
+}
+
 
 bool orientation_cull(in double3 ray, in double3 normal, in xdg::HitOrientation orientation) {
     if (orientation == xdg::HitOrientation::ANY) return false; // No culling
