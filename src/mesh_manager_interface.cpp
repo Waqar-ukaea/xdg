@@ -273,4 +273,17 @@ MeshManager::get_parent_volumes(MeshID surface) const
   return this->surface_senses(surface);
 }
 
+std::vector<Vertex> MeshManager::get_surface_vertices(MeshID surface) const
+{
+  std::vector<Vertex> vertices;
+  return vertices;
+}
+
+std::vector<int> MeshManager::get_surface_connectivity(MeshID surface) const
+{
+  std::vector<int> connectivity;
+  return connectivity;
+}
+
+
 } // namespace xdg

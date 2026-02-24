@@ -96,59 +96,59 @@ public:
     return {vertices()[conn[0]], vertices()[conn[1]], vertices()[conn[2]]};
   }
 
-  std::vector<Vertex> get_surface_vertices(MeshID surface) const override
-  {
-    // Get the faces for the given surface
-    auto faces = get_surface_faces(surface);
+  // std::vector<Vertex> get_surface_vertices(MeshID surface) const override
+  // {
+  //   // Get the faces for the given surface
+  //   auto faces = get_surface_faces(surface);
 
-    // Collect all unique vertices for the surface in encounter order
-    std::unordered_map<int, int> handle_to_index;
-    std::vector<Vertex> vertices;
-    int local_index = 0;
+  //   // Collect all unique vertices for the surface in encounter order
+  //   std::unordered_map<int, int> handle_to_index;
+  //   std::vector<Vertex> vertices;
+  //   int local_index = 0;
 
-    for (const auto& face : faces) {
-      const auto& conn = triangle_connectivity()[face];
-      for (const auto& global_index : conn) {
-        if (handle_to_index.find(global_index) == handle_to_index.end()) {
-          handle_to_index[global_index] = local_index++;
-          vertices.push_back(this->vertices()[global_index]);
-        }
-      }
-    }
+  //   for (const auto& face : faces) {
+  //     const auto& conn = triangle_connectivity()[face];
+  //     for (const auto& global_index : conn) {
+  //       if (handle_to_index.find(global_index) == handle_to_index.end()) {
+  //         handle_to_index[global_index] = local_index++;
+  //         vertices.push_back(this->vertices()[global_index]);
+  //       }
+  //     }
+  //   }
 
-    return vertices;
-  }
+  //   return vertices;
+  // }
 
-  std::vector<int> get_surface_connectivity(MeshID surface) const override
-  {
-    // Get the faces for the given surface
-    auto faces = get_surface_faces(surface);
+  // std::vector<int> get_surface_connectivity(MeshID surface) const override
+  // {
+  //   // Get the faces for the given surface
+  //   auto faces = get_surface_faces(surface);
 
-    // Collect all unique vertices for the surface
-    std::unordered_map<int, int> handle_to_index;
-    int local_index = 0;
+  //   // Collect all unique vertices for the surface
+  //   std::unordered_map<int, int> handle_to_index;
+  //   int local_index = 0;
 
-    for (const auto& face : faces) {
-      const auto& conn = triangle_connectivity()[face];
-      for (const auto& global_index : conn) {
-        if (handle_to_index.find(global_index) == handle_to_index.end()) {
-          handle_to_index[global_index] = local_index++;
-        }
-      }
-    }
+  //   for (const auto& face : faces) {
+  //     const auto& conn = triangle_connectivity()[face];
+  //     for (const auto& global_index : conn) {
+  //       if (handle_to_index.find(global_index) == handle_to_index.end()) {
+  //         handle_to_index[global_index] = local_index++;
+  //       }
+  //     }
+  //   }
 
-    // Build the connectivity array using local indices
-    std::vector<int> connectivity;
-    connectivity.reserve(faces.size() * 3);
-    for (const auto& face : faces) {
-      const auto& conn = triangle_connectivity()[face];
-      for (const auto& global_index : conn) {
-        connectivity.push_back(handle_to_index[global_index]);
-      }
-    }
+  //   // Build the connectivity array using local indices
+  //   std::vector<int> connectivity;
+  //   connectivity.reserve(faces.size() * 3);
+  //   for (const auto& face : faces) {
+  //     const auto& conn = triangle_connectivity()[face];
+  //     for (const auto& global_index : conn) {
+  //       connectivity.push_back(handle_to_index[global_index]);
+  //     }
+  //   }
 
-    return connectivity;
-  }
+  //   return connectivity;
+  // }
 
   std::vector<Vertex> get_volume_vertices(MeshID volume) const override
   {
@@ -319,6 +319,10 @@ public:
 
   virtual std::vector<MeshID> element_connectivity(MeshID element) const override {
     return {tetrahedron_connectivity().at(element).begin(), tetrahedron_connectivity().at(element).end()};
+  }
+
+  virtual std::vector<MeshID> face_connectivity(MeshID face) const override {
+    return {triangle_connectivity().at(face).begin(), triangle_connectivity().at(face).end()};
   }
 
   // Other

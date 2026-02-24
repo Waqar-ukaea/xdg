@@ -93,7 +93,7 @@ public:
 
   virtual std::array<Vertex, 3> face_vertices(MeshID element) const = 0;
 
-  virtual std::vector<Vertex> get_surface_vertices(MeshID surface) const = 0;
+  std::vector<Vertex> get_surface_vertices(MeshID surface) const;
 
   //! \brief Return a vertex ID given its index in the mesh
   virtual MeshID vertex_id(size_t vertex_idx) const
@@ -104,7 +104,7 @@ public:
   { return vertex_id_map_.id_to_index(vertex); }
 
   // Return an array of connectivity indices for a given surface in the model
-  virtual std::vector<int> get_surface_connectivity(MeshID surface) const = 0;
+  std::vector<int> get_surface_connectivity(MeshID surface) const;
 
   virtual SurfaceElementType get_surface_element_type(MeshID element) const = 0;
 
@@ -142,6 +142,9 @@ public:
   //! \return A vector of vertex IDs that make up the element
   virtual
   std::vector<MeshID> element_connectivity(MeshID element) const = 0;
+  
+  virtual
+  std::vector<MeshID> face_connectivity(MeshID face) const = 0;
 
   BoundingBox element_bounding_box(MeshID element) const;
 
