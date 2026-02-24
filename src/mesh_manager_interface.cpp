@@ -301,7 +301,7 @@ std::vector<Vertex> MeshManager::get_surface_vertices(MeshID surface) const
   return surface_local_mesh_data(surface).vertices;
 }
 
-std::vector<int> MeshManager::get_surface_connectivity(MeshID surface) const
+std::vector<int> MeshManager::get_volume_connectivity(MeshID volume) const
 {
   return surface_local_mesh_data(surface).connectivity;
 }
