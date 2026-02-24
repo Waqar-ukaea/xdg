@@ -117,21 +117,13 @@ public:
 
   std::vector<MeshID> element_connectivity(MeshID element) const override;
 
+  std::vector<MeshID> face_connectivity(MeshID element) const override;
+
   Vertex vertex_coordinates(MeshID vertex) const override;
 
   std::array<Vertex, 3> face_vertices(MeshID triangle) const override;
 
   std::vector<MeshID> get_volume_surfaces(MeshID volume) const override;
-
-  std::vector<Vertex> get_surface_vertices(MeshID surface) const override
-  {
-    fatal_error("LibMeshManager::get_surface_vertices() not implemented yet");
-  }
-
-  std::vector<int> get_surface_connectivity(MeshID surface) const override
-  {
-    fatal_error("LibMeshManager::get_surface_connectivity not implemented yet");
-  }
 
   SurfaceElementType get_surface_element_type(MeshID surface) const override
   {

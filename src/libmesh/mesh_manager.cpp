@@ -119,6 +119,22 @@ LibMeshManager::element_connectivity(MeshID element) const {
   return conn;
 }
 
+std::vector<MeshID>
+LibMeshManager::face_connectivity(MeshID face) const {
+  const auto& sp = sidepair(face);
+  auto face_ptr = sp.face_ptr();
+  if (!face_ptr) {
+    fatal_error("Invalid face in face_connectivity");
+  }
+
+  std::vector<MeshID> conn;
+  conn.reserve(face_ptr->n_nodes());
+  for (unsigned int i = 0; i < face_ptr->n_nodes(); ++i) {
+    conn.push_back(face_ptr->node_id(i));
+  }
+  return conn;
+}
+
 MeshID LibMeshManager::create_volume() {
   MeshID next_volume_id = *std::max_element(volumes_.begin(), volumes_.end()) + 1;
   return next_volume_id;
