@@ -319,6 +319,75 @@ std::vector<int> MeshManager::get_surface_connectivity(MeshID surface) const
   return connectivity;
 }
 
+std::vector<Vertex> MeshManager::get_volume_vertices(MeshID volume) const
+{
+  const auto unique_vertex_ids = get_volume_vertex_ids(volume);
+
+  // Build the local vertex array for this volume
+  std::vector<Vertex> vertices;
+  vertices.reserve(unique_vertex_ids.size());
+  for (auto vertex_id : unique_vertex_ids) {
+    vertices.push_back(vertex_coordinates(vertex_id));
+  }
+
+  return vertices;
+}
+
+std::vector<int> MeshManager::get_volume_connectivity(MeshID volume) const
+{
+  // Get the elements for the given volume
+  const auto elements = get_volume_elements(volume);
+  const auto unique_vertex_ids = get_volume_vertex_ids(volume);
+
+  // Create a mapping from global vertex IDs to local volume indices
+  std::unordered_map<MeshID, int> vertex_to_local;
+  vertex_to_local.reserve(unique_vertex_ids.size());
+
+  int local_index = 0;
+  for (auto vertex_id : unique_vertex_ids) {
+    vertex_to_local[vertex_id] = local_index++;
+  }
+
+  // Build the connectivity array using local indices
+  std::vector<int> connectivity;
+  for (auto element : elements) {
+    const auto conn = element_connectivity(element);
+
+    // Remap global indices to local indices on the volume
+    for (auto vertex_id : conn) {
+      connectivity.push_back(vertex_to_local.at(vertex_id));
+    }
+  }
+
+  return connectivity;
+}
+
+std::vector<MeshID> MeshManager::get_volume_vertex_ids(MeshID volume) const
+{
+  // Get the elements for the given volume
+  const auto elements = get_volume_elements(volume);
+
+  // Collect all unique vertices for the volume
+  std::vector<MeshID> unique_vertex_ids;
+  std::unordered_set<MeshID> seen_vertices;
+  for (auto element : elements) {
+    const auto conn = element_connectivity(element);
+    for (auto vertex_id : conn) {
+      const auto [_, inserted] = seen_vertices.insert(vertex_id);
+      if (inserted) {
+        unique_vertex_ids.push_back(vertex_id);
+      }
+    }
+  }
+
+  // Keep local vertex ordering deterministic across backends by sorting
+  // according to the global mesh vertex index ordering from IDBlockMapping
+  std::sort(unique_vertex_ids.begin(), unique_vertex_ids.end(),
+            [this](MeshID a, MeshID b) { return vertex_index(a) < vertex_index(b); });
+
+  return unique_vertex_ids;
+}
+
 std::vector<MeshID> MeshManager::get_surface_vertex_ids(MeshID surface) const
 {
   // Get the faces for the given surface
@@ -333,7 +402,7 @@ std::vector<MeshID> MeshManager::get_surface_vertex_ids(MeshID surface) const
   for (auto face : faces) {
     const auto conn = face_connectivity(face);
     for (auto vertex_id : conn) {
-      const auto [it, inserted] = seen_vertices.insert(vertex_id);
+      const auto [_, inserted] = seen_vertices.insert(vertex_id);
       if (inserted) {
         unique_vertex_ids.push_back(vertex_id);
       }

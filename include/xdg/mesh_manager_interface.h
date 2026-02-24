@@ -82,10 +82,10 @@ public:
 
   std::vector<MeshID> get_volume_faces(MeshID volume) const;
 
-  // Return an array of connectivity indices for a given volume in the model
-  virtual std::vector<int> get_volume_connectivity(MeshID volume) const = 0;
+  // Return a vector of connectivity indices for a given volume in the model
+  virtual std::vector<int> get_volume_connectivity(MeshID volume) const;
 
-  virtual std::vector<Vertex> get_volume_vertices(MeshID volume) const = 0;
+  virtual std::vector<Vertex> get_volume_vertices(MeshID volume) const;
 
   virtual std::vector<MeshID> get_surface_faces(MeshID surface) const = 0;
   // TODO: can we accomplish this without allocating memory?
@@ -103,7 +103,7 @@ public:
   virtual MeshIndex vertex_index(MeshID vertex) const
   { return vertex_id_map_.id_to_index(vertex); }
 
-  // Return an array of connectivity indices for a given surface in the model
+  // Return a vector of connectivity indices for a given surface in the model
   std::vector<int> get_surface_connectivity(MeshID surface) const;
 
   virtual SurfaceElementType get_surface_element_type(MeshID element) const = 0;
@@ -200,6 +200,9 @@ public:
   virtual MeshLibrary mesh_library() const = 0;
 
 protected:
+  // Return a unique set of MeshIDs for the vertices in a given volume
+  std::vector<MeshID> get_volume_vertex_ids(MeshID volume) const;
+
   // Return a unique set of MeshIDs for the vertices on a given surface
   std::vector<MeshID> get_surface_vertex_ids(MeshID surface) const;
 

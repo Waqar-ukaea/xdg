@@ -66,11 +66,6 @@ public:
 
   std::vector<MeshID> get_volume_elements(MeshID volume) const override;
 
-  // Map from global volume connectivity indices to local volume connectivity indices and return the local connectivity for a volume
-  std::vector<int> get_volume_connectivity(MeshID volume) const override;
-
-  std::vector<Vertex> get_volume_vertices(MeshID volume) const override;
-
   std::vector<MeshID> get_surface_faces(MeshID surface) const override;
 
   std::vector<MeshID> element_connectivity(MeshID element) const override;

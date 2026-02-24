@@ -324,46 +324,46 @@ MOABMeshManager::get_volume_elements(MeshID volume) const
   return element_ids;
 }
 
-std::vector<Vertex>
-MOABMeshManager::get_volume_vertices(MeshID volume) const
-{
-  moab::Range elements = _volume_elements(volume); // MBTET
-  moab::Range verts;
-  this->moab_interface()->get_adjacencies(elements, 0, false, verts, moab::Interface::UNION);
-  return _get_coords(verts);
-}
+// std::vector<Vertex>
+// MOABMeshManager::get_volume_vertices(MeshID volume) const
+// {
+//   moab::Range elements = _volume_elements(volume); // MBTET
+//   moab::Range verts;
+//   this->moab_interface()->get_adjacencies(elements, 0, false, verts, moab::Interface::UNION);
+//   return _get_coords(verts);
+// }
 
-std::vector<int>
-MOABMeshManager::get_volume_connectivity(MeshID volume) const
-{
-  moab::Range elements = _volume_elements(volume); // MBTET
-  moab::Range verts;
-  this->moab_interface()->get_adjacencies(elements, 0, false, verts, moab::Interface::UNION);
+// std::vector<int>
+// MOABMeshManager::get_volume_connectivity(MeshID volume) const
+// {
+//   moab::Range elements = _volume_elements(volume); // MBTET
+//   moab::Range verts;
+//   this->moab_interface()->get_adjacencies(elements, 0, false, verts, moab::Interface::UNION);
 
-  // Create a mapping from global vertex handles to local volume indices
-  std::unordered_map<moab::EntityHandle, int> handle_to_index;
-  int local_index = 0;
-  for (auto vert : verts) {
-    handle_to_index[vert] = local_index++;
-  }
+//   // Create a mapping from global vertex handles to local volume indices
+//   std::unordered_map<moab::EntityHandle, int> handle_to_index;
+//   int local_index = 0;
+//   for (auto vert : verts) {
+//     handle_to_index[vert] = local_index++;
+//   }
 
-  std::vector<moab::EntityHandle> conn;
-  auto first_element = *elements.begin();
-  this->moab_interface()->get_connectivity(&first_element, 1, conn); // global indices
-  if (conn.size() != 4) fatal_error("Expected linear tet elements to return in get_volume mesh()");
+//   std::vector<moab::EntityHandle> conn;
+//   auto first_element = *elements.begin();
+//   this->moab_interface()->get_connectivity(&first_element, 1, conn); // global indices
+//   if (conn.size() != 4) fatal_error("Expected linear tet elements to return in get_volume mesh()");
 
-  std::vector<int> connectivity;
-  for (auto element : elements) {
-    this->moab_interface()->get_connectivity(&element, 1, conn); // global indices
+//   std::vector<int> connectivity;
+//   for (auto element : elements) {
+//     this->moab_interface()->get_connectivity(&element, 1, conn); // global indices
 
-    // Remap global indices to local indices on the volume
-    connectivity.push_back(handle_to_index[conn[0]]);
-    connectivity.push_back(handle_to_index[conn[1]]);
-    connectivity.push_back(handle_to_index[conn[2]]);
-    connectivity.push_back(handle_to_index[conn[3]]);
-  }
-  return connectivity;
-}
+//     // Remap global indices to local indices on the volume
+//     connectivity.push_back(handle_to_index[conn[0]]);
+//     connectivity.push_back(handle_to_index[conn[1]]);
+//     connectivity.push_back(handle_to_index[conn[2]]);
+//     connectivity.push_back(handle_to_index[conn[3]]);
+//   }
+//   return connectivity;
+// }
 
 std::vector<MeshID>
 MOABMeshManager::get_surface_faces(MeshID surface) const
