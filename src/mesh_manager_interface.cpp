@@ -1,6 +1,8 @@
 #include "xdg/mesh_manager_interface.h"
 
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "xdg/config.h"
 #include "xdg/error.h"
