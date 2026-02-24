@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "xdg/config.h"
 #include "xdg/error.h"
@@ -275,15 +277,75 @@ MeshManager::get_parent_volumes(MeshID surface) const
 
 std::vector<Vertex> MeshManager::get_surface_vertices(MeshID surface) const
 {
+  const auto unique_vertex_ids = get_surface_vertex_ids(surface);
+
+  // Build the local vertex array for this surface
   std::vector<Vertex> vertices;
+  vertices.reserve(unique_vertex_ids.size());
+  for (auto vertex_id : unique_vertex_ids) {
+    vertices.push_back(vertex_coordinates(vertex_id));
+  }
+
   return vertices;
 }
 
 std::vector<int> MeshManager::get_surface_connectivity(MeshID surface) const
 {
+  // Get the faces for the given surface
+  const auto faces = get_surface_faces(surface);
+  const auto unique_vertex_ids = get_surface_vertex_ids(surface);
+
+  // Create a mapping from global vertex IDs to local surface indices
+  std::unordered_map<MeshID, int> vertex_to_local;
+  vertex_to_local.reserve(unique_vertex_ids.size());
+
+  int local_index = 0;
+  for (auto vertex_id : unique_vertex_ids) {
+    vertex_to_local[vertex_id] = local_index++;
+  }
+
+  // Build the connectivity array using local indices
   std::vector<int> connectivity;
+  connectivity.reserve(faces.size() * 3);
+  for (auto face : faces) {
+    const auto conn = face_connectivity(face);
+
+    // Remap global indices to local indices on the surface
+    connectivity.push_back(vertex_to_local.at(conn[0]));
+    connectivity.push_back(vertex_to_local.at(conn[1]));
+    connectivity.push_back(vertex_to_local.at(conn[2]));
+  }
+
   return connectivity;
 }
 
+std::vector<MeshID> MeshManager::get_surface_vertex_ids(MeshID surface) const
+{
+  // Get the faces for the given surface
+  const auto faces = get_surface_faces(surface);
+
+  // Collect all unique vertices for the surface
+  std::vector<MeshID> unique_vertex_ids;
+  std::unordered_set<MeshID> seen_vertices;
+  unique_vertex_ids.reserve(faces.size() * 3);
+
+  // Build list of unique vertex IDs by iterating over the faces and their connectivity only inserting non duplicates
+  for (auto face : faces) {
+    const auto conn = face_connectivity(face);
+    for (auto vertex_id : conn) {
+      const auto [it, inserted] = seen_vertices.insert(vertex_id);
+      if (inserted) {
+        unique_vertex_ids.push_back(vertex_id);
+      }
+    }
+  }
+
+  // Keep local vertex ordering deterministic across backends by sorting
+  // according to the global mesh vertex index ordering from IDBlockMapping
+  std::sort(unique_vertex_ids.begin(), unique_vertex_ids.end(),
+            [this](MeshID a, MeshID b) { return vertex_index(a) < vertex_index(b); });
+
+  return unique_vertex_ids;
+}
 
 } // namespace xdg

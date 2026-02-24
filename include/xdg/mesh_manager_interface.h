@@ -200,6 +200,9 @@ public:
   virtual MeshLibrary mesh_library() const = 0;
 
 protected:
+  // Return a unique set of MeshIDs for the vertices on a given surface
+  std::vector<MeshID> get_surface_vertex_ids(MeshID surface) const;
+
   // metadata
   std::map<std::pair<MeshID, PropertyType>, Property> volume_metadata_;
   std::map<std::pair<MeshID, PropertyType>, Property> surface_metadata_;
