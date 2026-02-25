@@ -2,7 +2,11 @@
 #ifndef _XDG_MESH_MANAGER_INTERFACE
 #define _XDG_MESH_MANAGER_INTERFACE
 
+#include <algorithm>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "xdg/bbox.h"
@@ -200,11 +204,6 @@ public:
   virtual MeshLibrary mesh_library() const = 0;
 
 protected:
-  // Return a unique set of MeshIDs for the vertices in a given volume
-  std::vector<MeshID> get_volume_vertex_ids(MeshID volume) const;
-
-  // Return a unique set of MeshIDs for the vertices on a given surface
-  std::vector<MeshID> get_surface_vertex_ids(MeshID surface) const;
 
   // metadata
   std::map<std::pair<MeshID, PropertyType>, Property> volume_metadata_;
@@ -221,6 +220,80 @@ protected:
 
   // TODO: attempt to remove this attribute
   MeshID implicit_complement_ {ID_NONE};
+
+private:
+  // Returning this struct lets us call the same function to return local mesh data for both vertices and connectivity
+  struct LocalMeshData {
+    std::vector<MeshID> vertex_ids; // Not strictly used but could be useful at somepoint i guess
+    std::vector<Vertex> vertices;
+    std::vector<int> connectivity;
+  };
+
+  // Private helper function to build local mesh data for a given set of entities (volumes or surfaces) and a connectivity function
+  // idk if i love this but it does reduce some code duplication instead of maintaining two separate methods for building surface vs volume local mesh data
+  template <typename EntitySet, typename ConnectivityFunc>
+  LocalMeshData local_mesh_data(const EntitySet& entities,
+                                ConnectivityFunc&& connectivity_func) const
+  {
+    std::vector<std::vector<MeshID>> entity_connectivities;
+    entity_connectivities.reserve(entities.size());
+
+    size_t total_connectivity_entries = 0;
+    for (auto entity : entities) {
+      auto conn = connectivity_func(entity);
+      total_connectivity_entries += conn.size();
+      entity_connectivities.push_back(std::move(conn));
+    }
+
+    std::vector<MeshID> unique_vertex_ids;
+    std::unordered_set<MeshID> seen_vertices;
+    unique_vertex_ids.reserve(total_connectivity_entries);
+    seen_vertices.reserve(total_connectivity_entries);
+
+    // Collect unique vertex IDs while preserving order of first occurrence
+    for (const auto& conn : entity_connectivities) {
+      for (auto vertex_id : conn) {
+        const auto [_, inserted] = seen_vertices.insert(vertex_id);
+        if (inserted) {
+          unique_vertex_ids.push_back(vertex_id);
+        }
+      }
+    }
+
+    // Sort unique vertex IDs by their index in the mesh to ensure consistent ordering
+    std::sort(unique_vertex_ids.begin(), unique_vertex_ids.end(),
+              [this](MeshID a, MeshID b) {
+                return vertex_index(a) < vertex_index(b);
+              });
+
+    // Create mapping from vertex ID to local index
+    std::unordered_map<MeshID, int> vertex_to_local;
+    vertex_to_local.reserve(unique_vertex_ids.size());
+    int local_index = 0;
+    for (auto vertex_id : unique_vertex_ids) {
+      vertex_to_local[vertex_id] = local_index++;
+    }
+
+    // Create LocalMeshData object to return
+    LocalMeshData data;
+    data.vertex_ids = std::move(unique_vertex_ids);
+    data.vertices.reserve(data.vertex_ids.size());
+    for (auto vertex_id : data.vertex_ids) {
+      data.vertices.push_back(vertex_coordinates(vertex_id)); // get coords from vertex ID
+    }
+
+    data.connectivity.reserve(total_connectivity_entries);
+    for (const auto& conn : entity_connectivities) {
+      for (auto vertex_id : conn) {
+        data.connectivity.push_back(vertex_to_local.at(vertex_id)); // convert to local index connectivity
+      }
+    }
+
+    return data;
+  }
+
+  LocalMeshData surface_local_mesh_data(MeshID surface) const;
+  LocalMeshData volume_local_mesh_data(MeshID volume) const;
 };
 
 } // namespace xdg
