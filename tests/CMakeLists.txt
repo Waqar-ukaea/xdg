@@ -18,6 +18,7 @@ test_tet_containment
 test_tracks
 test_tet_intersection
 test_tally_segments
+test_mesh_connectivity
 )
 
 if (XDG_ENABLE_MOAB)
