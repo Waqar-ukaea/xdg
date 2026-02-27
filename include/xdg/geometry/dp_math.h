@@ -25,7 +25,6 @@ namespace dp {
 
 #else
 #include "xdg/vec3da.h"
-#include "xdg/util/linalg.h"
 
 // C++ compilation map dp::vec3 -> xdg::Vec3da
 namespace dp {

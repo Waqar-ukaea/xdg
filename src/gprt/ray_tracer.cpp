@@ -128,14 +128,6 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   std::vector<gprt::Instance> surfaceBlasInstances; // BLAS for each (surface) geometry in this volume
 
   for (const auto &surf : volume_surfaces) {
-    auto num_faces = mesh_manager->num_surface_faces(surf);
-
-    // get the sense of this surface with respect to the volume
-    Sense triangle_sense {Sense::UNSET};
-    auto surf_to_vol_senses = mesh_manager->get_parent_volumes(surf);
-    if (volume_id == surf_to_vol_senses.first) triangle_sense = Sense::FORWARD;
-    else if (volume_id == surf_to_vol_senses.second) triangle_sense = Sense::REVERSE;
-    
     DPTriangleGeomData* geom_data = nullptr;
     auto triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
     geom_data = gprtGeomGetParameters(triangleGeom); // pointer to assign data to
@@ -143,30 +135,32 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     // Get storage for vertices and indices
     auto vertices = mesh_manager->get_surface_vertices(surf);
     auto indices = mesh_manager->get_surface_connectivity(surf);
-    std::vector<double3> dbl3Vertices;
-    dbl3Vertices.reserve(vertices.size());    
-    for (const auto &vertex : vertices) {
-      dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+    if (indices.size() % 3 != 0) {
+      fatal_error("Surface {} connectivity size ({}) is not divisible by 3 for triangles", surf, indices.size());
+    }
+    std::vector<double3> dbl3Vertices(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      const auto& vertex = vertices[i];
+      dbl3Vertices[i] = {vertex.x, vertex.y, vertex.z};
     }
 
     // Get storage for indices
-    std::vector<uint3> ui3Indices;
-    ui3Indices.reserve(indices.size() / 3);
-    for (size_t i = 0; i < indices.size(); i += 3) {
-      ui3Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+    std::vector<uint3> ui3Indices(indices.size() / 3);
+    for (size_t i = 0, triIdx = 0; i < indices.size(); i += 3, ++triIdx) {
+      ui3Indices[triIdx] = uint3(indices[i], indices[i + 1], indices[i + 2]);
     }
 
     // Get storage for normals
-    std::vector<double3> normals;
-    std::vector<GPRTPrimitiveRef> primitive_refs;
-    primitive_refs.reserve(num_faces);
-    normals.reserve(num_faces);
-    for (const auto &face : mesh_manager->get_surface_faces(surf)) {
+    auto surface_faces = mesh_manager->get_surface_faces(surf);
+    const size_t num_faces = surface_faces.size();
+
+    std::vector<double3> normals(surface_faces.size());
+    std::vector<GPRTPrimitiveRef> primitive_refs(surface_faces.size());
+    for (size_t i = 0; i < surface_faces.size(); ++i) {
+      const auto face = surface_faces[i];
       auto norm = mesh_manager->face_normal(face);
-      normals.push_back({norm.x, norm.y, norm.z});
-      GPRTPrimitiveRef prim_ref;
-      prim_ref.id = face;
-      primitive_refs.push_back(prim_ref);
+      normals[i] = {norm.x, norm.y, norm.z};
+      primitive_refs[i].id = face;
     }
 
     auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
@@ -197,9 +191,6 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     // Store in maps
     surface_to_geometry_map_[surf] = triangleGeom;
 
-    geom_data = gprtGeomGetParameters(triangleGeom);
-    instance = gprtAccelGetInstance(blas);
-    instance.mask = 0xff;
     surfaceBlasInstances.push_back(instance);
     globalBlasInstances_.push_back(instance);
     
@@ -240,26 +231,23 @@ GPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_mana
 
   auto vertices = mesh_manager->get_volume_vertices(volume_id);
   auto indices = mesh_manager->get_volume_connectivity(volume_id);
-  std::vector<double3> dbl3Vertices;
-  dbl3Vertices.reserve(vertices.size());
-  for (const auto &vertex : vertices) {
-    dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+
+  std::vector<double3> dbl3Vertices(vertices.size());
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    const auto& vertex = vertices[i];
+    dbl3Vertices[i] = {vertex.x, vertex.y, vertex.z};
   }
 
   // Get storage for indices
-  std::vector<uint4> ui4Indices;
-  ui4Indices.reserve(indices.size() / 4);
-  for (size_t i = 0; i + 3 < indices.size(); i += 4) {
-    ui4Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2], indices[i + 3]);
+  std::vector<uint4> ui4Indices(indices.size() / 4);
+  for (size_t i = 0, tetIdx = 0; i < indices.size(); i += 4, ++tetIdx) {
+    ui4Indices[tetIdx] = uint4(indices[i], indices[i + 1], indices[i + 2], indices[i + 3]);
   }
 
   // Get storage for prim IDs
-  std::vector<GPRTPrimitiveRef> primitive_refs;
-  primitive_refs.reserve(mesh_manager->num_volume_elements(volume_id));
-  for (const auto &element : mesh_manager->get_volume_elements(volume_id)) {
-    GPRTPrimitiveRef prim_ref;
-    prim_ref.id = element;
-    primitive_refs.push_back(prim_ref);
+  std::vector<GPRTPrimitiveRef> primitive_refs(volume_elements.size());
+  for (size_t i = 0; i < volume_elements.size(); ++i) {
+    primitive_refs[i].id = volume_elements[i];
   }
 
   auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
