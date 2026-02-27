@@ -15,8 +15,6 @@ struct DPAttribute
   int global_prim_id;
 };
 
-static const double PLUCKER_ZERO_TOL = double(20.0) * DBL_EPSILON;
-
 // ------------------------------------------------- Helper functions -------------------------------------------------
 
 // Templated/generic function to compute AABBs in double precision and fill the float AABB buffer. Generic to handle triangles, tets and future primitives with different numbers of vertices
@@ -74,70 +72,6 @@ float next_after(float a) {
         a_++;
     }
     return asfloat(a_);
-}
-
-// slang doesnt seem to have an inverse matrix intrinsic so I needed to write my own unfortunately :/ 
-double3x3 inverse3x3(in double3x3 matrix)
-{
-    double m00 = matrix[0][0], m01 = matrix[0][1], m02 = matrix[0][2];
-    double m10 = matrix[1][0], m11 = matrix[1][1], m12 = matrix[1][2];
-    double m20 = matrix[2][0], m21 = matrix[2][1], m22 = matrix[2][2];
-
-    // Cofactor matrix.
-    double c00 =  (m11 * m22 - m12 * m21);
-    double c01 = -(m10 * m22 - m12 * m20);
-    double c02 =  (m10 * m21 - m11 * m20);
-    double c10 = -(m01 * m22 - m02 * m21);
-    double c11 =  (m00 * m22 - m02 * m20);
-    double c12 = -(m00 * m21 - m01 * m20);
-    double c20 =  (m01 * m12 - m02 * m11);
-    double c21 = -(m00 * m12 - m02 * m10);
-    double c22 =  (m00 * m11 - m01 * m10);
-
-    double det = m00 * c00 + m01 * c01 + m02 * c02;
-
-    // Adjugate is transpose(cofactor).
-    double3x3 adj = {
-        { c00, c10, c20 },
-        { c01, c11, c21 },
-        { c02, c12, c22 }
-    };
-    return adj * (double(1.0) / det);
-}
-
-bool plucker_tet_containment_test(in double3 point,
-                                  in double3 v0,
-                                  in double3 v1,
-                                  in double3 v2,
-                                  in double3 v3) {
-    // Create matrix T = [v1 - v0, v2 - v0, v3 - v0]
-    double3 e0 = v1 - v0;
-    double3 e1 = v2 - v0;
-    double3 e2 = v3 - v0;
-    double3x3 T = { { e0.x, e0.y, e0.z },
-                    { e1.x, e1.y, e1.z },
-                    { e2.x, e2.y, e2.z } };
-
-    // Vector from v0 to point
-    double3 rhs = point - v0;
-
-    // Solve T * [λ1, λ2, λ3] = rhs.
-    // In Slang, mul(matrix, vector) is lowered as vector-times-matrix on shader backends,
-    // so transpose the inverse to preserve CPU-side convention.
-    double3 lambda123 = mul(transpose(inverse3x3(T)), double3(rhs.x, rhs.y, rhs.z));
-
-    // Compute λ0
-    double lambda0 = double(1.0) - (lambda123.x + lambda123.y + lambda123.z);
-
-    // Final barycentric coordinate vector
-    double4 bary = { lambda0, lambda123.x, lambda123.y, lambda123.z };
-
-    // Check all λ_i in [0, 1]
-    for (int i = 0; i < 4; ++i) {
-        if (bary[i] < -PLUCKER_ZERO_TOL || bary[i] > double(1.0) + PLUCKER_ZERO_TOL)
-            return false;
-    }
-    return true;
 }
 
 #endif // XDG_GPRT_RT_COMMON_SLANGH

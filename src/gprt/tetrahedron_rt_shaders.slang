@@ -72,7 +72,7 @@ void DPTetrahedronPluckerIntersection(uniform DPTetrahedronGeomData record)
     double3 v3 = record.vertex[indices[3]];
     double3 origin = record.ray[rayID].origin;
 
-    bool inside = plucker_tet_containment_test(origin, v0, v1, v2, v3);
+    bool inside = xdg::plucker_tet_containment_test(origin, v0, v1, v2, v3);
     if (!inside) return;
 
     // If we are inside the tet we need to report a hit to move through the rest of the RT pipeline
