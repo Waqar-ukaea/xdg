@@ -16,7 +16,7 @@
 	url = https://github.com/p-ranav/indicators
 [submodule "vendor/linalg"]
 	path = vendor/linalg
-	url = git@github.com:sgorsten/linalg.git
+	url = https://github.com/sgorsten/linalg.git
 [submodule "vendor/GPRT"]
 	path = vendor/GPRT
 	url = https://github.com/gprt-org/GPRT.git
