@@ -11,14 +11,23 @@ namespace xdg {
 
 union BoundingBox {
 struct {
-  double min_x {0.0};
-  double min_y {0.0};
-  double min_z {0.0};
-  double max_x {0.0};
-  double max_y {0.0};
-  double max_z {0.0};
+  double min_x;
+  double min_y;
+  double min_z;
+  double max_x;
+  double max_y;
+  double max_z;
 };
 double bounds[6];
+
+constexpr BoundingBox()
+  : bounds{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}
+{}
+
+constexpr BoundingBox(double min_x_, double min_y_, double min_z_,
+                      double max_x_, double max_y_, double max_z_)
+  : bounds{min_x_, min_y_, min_z_, max_x_, max_y_, max_z_}
+{}
 
 double operator[](const size_t index) const {
   return bounds[index];

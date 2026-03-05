@@ -7,6 +7,6 @@
 #include "xdg/gprt/ray_tracer.h"
 #endif
 
-#ifdef XDG_ENABLE_DEEPEERT
-#include "xdg/DeePeeRT/ray_tracer.h"
+#ifdef XDG_ENABLE_DPRT
+#include "xdg/DPRT/ray_tracer.h"
 #endif
