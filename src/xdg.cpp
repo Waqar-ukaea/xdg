@@ -32,7 +32,7 @@ XDG::XDG(std::shared_ptr<MeshManager> mesh_manager, RTLibrary ray_tracing_lib)
       fatal_error("This build was not compiled with GPRT support (XDG_ENABLE_GPRT=OFF).");
     #endif
 
-    case RTLibrary::DEEPEE_RT:
+    case RTLibrary::DPRT:
     #ifdef XDG_ENABLE_DPRT
       set_ray_tracing_interface(std::make_shared<DPRTRayTracer>());
       break;
@@ -101,7 +101,7 @@ std::shared_ptr<XDG> XDG::create(MeshLibrary mesh_lib, RTLibrary ray_tracing_lib
     if (ray_tracing_lib == RTLibrary::GPRT) return std::make_shared<GPRTRayTracer>();
     #endif
     #ifdef XDG_ENABLE_DPRT
-    if (ray_tracing_lib == RTLibrary::DEEPEE_RT) return std::make_shared<DPRTRayTracer>();
+    if (ray_tracing_lib == RTLibrary::DPRT) return std::make_shared<DPRTRayTracer>();
     #endif
 
     // If no supported ray tracing library throw an error
