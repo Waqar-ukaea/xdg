@@ -135,6 +135,7 @@ void check_instance_for_overlaps(std::shared_ptr<XDG> xdg,
   auto edge_bar = block_progress_bar(fmt::format("Checking {} Edges", totalEdgeRays));
 
   std::vector<Position> edgeOverlapLocs;
+  std::vector<MeshID> surfacesToCheck(allSurfs.begin(), allSurfs.end());
 
   int edgeRaysCast = 0;
 
@@ -145,8 +146,9 @@ void check_instance_for_overlaps(std::shared_ptr<XDG> xdg,
   //  but it isn't hurting anything to check more locations)
 
 #pragma omp for schedule(auto)
-    for (const auto& surf:allSurfs)
+    for (int surf_idx = 0; surf_idx < static_cast<int>(surfacesToCheck.size()); ++surf_idx)
     {
+      const auto surf = surfacesToCheck[surf_idx];
       auto parentVols = mm->get_parent_volumes(surf);
       std::vector<MeshID> volsToCheck;
       std::copy_if(allVols.begin(), allVols.end(), std::back_inserter(volsToCheck), [&parentVols](MeshID vol)
@@ -262,4 +264,3 @@ MeshID check_along_edge(std::shared_ptr<XDG> xdg,
   }
   return -1;
 }
-
