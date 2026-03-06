@@ -308,6 +308,11 @@ endif()
 
 if (XDG_ENABLE_DPRT)
   target_link_libraries(xdg dprt::dprt)
+  # dprt OpenMP-offload builds (NVHPC) require -mp=gpu at final executable link
+  # so symbols like __acc_compiled resolve for downstream targets (e.g. tests).
+  if (CMAKE_CXX_COMPILER_ID MATCHES "^(NVHPC|PGI|NVIDIA)$")
+    target_link_options(xdg INTERFACE -mp=gpu)
+  endif()
 endif()
 
 # ===================

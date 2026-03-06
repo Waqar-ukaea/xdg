@@ -1,11 +1,14 @@
 #ifndef XDG_DPRT_RAY_TRACER_H
 #define XDG_DPRT_RAY_TRACER_H
 
+#include <unordered_map>
+
+
 #include "xdg/constants.h"
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/ray_tracing_interface.h"
 #include "xdg/error.h"
-
+#include <dprt/dprt.h>
 
 namespace xdg {
 
@@ -44,6 +47,8 @@ public:
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
+  void dpr_trace(TreeID tree, DPRTRay* rays, DPRTHit* hits, size_t num_rays);
+
   MeshID find_element(const Position& point) const override;
 
   MeshID find_element(TreeID tree, const Position& point) const override;
@@ -56,16 +61,9 @@ public:
                 const Direction& direction,
                 double& dist) const override;
 
-  void ray_fire_prepared(const size_t num_rays,
-                         const double dist_limit = INFTY,
-                         HitOrientation orientation = HitOrientation::EXITING) override;
-
-  void populate_rays_external(size_t numRays,
-                              const RayPopulationCallback& callback) override;
-
 private:
-  DPRTContext context_;
-     
+  DPRTContext context_ {nullptr};
+  std::unordered_map<TreeID, DPRTModel> surface_tree_to_model_;
 };
 } // namespace xdg
 
