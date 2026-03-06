@@ -6,7 +6,6 @@
 #include "xdg/ray_tracing_interface.h"
 #include "xdg/error.h"
 
-#include <
 
 namespace xdg {
 
@@ -15,7 +14,7 @@ public:
   DPRTRayTracer();
   ~DPRTRayTracer();
 
-  RTLibrary library() const override { return RTLibrary::DEEPEE_RT; }
+  RTLibrary library() const override { return RTLibrary::DPRT; }
 
   void init() override;
 
@@ -63,8 +62,11 @@ public:
 
   void populate_rays_external(size_t numRays,
                               const RayPopulationCallback& callback) override;
-};
 
+private:
+  DPRTContext context_;
+     
+};
 } // namespace xdg
 
 #endif // XDG_DPRT_RAY_TRACER_H

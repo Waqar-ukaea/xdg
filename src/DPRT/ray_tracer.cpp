@@ -1,4 +1,5 @@
 #include "xdg/DPRT/ray_tracer.h"
+#include "include/dprt/dprt.in.h"
 
 namespace xdg {
 
@@ -7,7 +8,7 @@ DPRTRayTracer::~DPRTRayTracer() = default;
 
 void DPRTRayTracer::init()
 {
-  warning("DPRT ray tracer init() is currently a stub.");
+  context_ = dprtContextCreate(DPRT_CONTEXT_GPU, 0); // Create a GPU context using the first available GPU
 }
 
 std::pair<TreeID, TreeID>
@@ -19,13 +20,26 @@ DPRTRayTracer::register_volume(const std::shared_ptr<MeshManager>& mesh_manager,
   return {surface_tree, element_tree};
 }
 
-TreeID DPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>&, MeshID)
+TreeID DPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_manager, MeshID volume_id)
 {
+  SurfaceTreeID tree = next_surface_tree_id();
+  surface_trees_.push_back(tree);
+  auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
+
+  for (const auto &surf : volume_surfaces) {
+    auto [vertices, indices] = mesh_manager->get_surface_mesh(surf);
+    
+
+ 
+    dprtCreateTriangles(context_, surf, )
+
+  }
+
   warning("DPRT surface tree creation is not implemented.");
   return TREE_NONE;
 }
 
-TreeID DPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>&, MeshID)
+TreeID DPRTRayTracer::create_element_tree(const std::shared_ptr<MeshManager>& mesh_manager, MeshID volume_id)
 {
   warning("DPRT element tree creation is not implemented.");
   return TREE_NONE;

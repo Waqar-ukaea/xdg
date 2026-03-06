@@ -55,7 +55,7 @@ enum class MeshLibrary {
 enum class RTLibrary {
   EMBREE,
   GPRT,
-  DEEPEE_RT
+  DPRT
 };
 
 static const std::map<MeshLibrary, std::string> MESH_LIB_TO_STR =
@@ -68,7 +68,8 @@ static const std::map<MeshLibrary, std::string> MESH_LIB_TO_STR =
 static const std::map<RTLibrary, std::string> RT_LIB_TO_STR =
 {
   {RTLibrary::EMBREE, "EMBREE"},
-  {RTLibrary::GPRT, "GPRT"}
+  {RTLibrary::GPRT, "GPRT"}, 
+  {RTLibrary::DPRT, "DPRT"}
 };
 
 // Mesh identifer type
