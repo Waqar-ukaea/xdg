@@ -98,7 +98,7 @@ double max_chord_length() const {
  * @return double The dilation distance
  */
 double dilation() const {
-  return max_chord_length() * DILATION_FACTOR;
+  return max_chord_length() * FP_BOX_TOL;
 }
 
 template <typename T>
