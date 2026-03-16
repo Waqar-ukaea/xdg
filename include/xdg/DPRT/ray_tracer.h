@@ -47,7 +47,7 @@ public:
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
-  void batch_ray_fire(TreeID tree, DPRTRay* rays, DPRTHit* hits, size_t num_rays) override;
+  void batch_ray_fire(TreeID tree, DPRTRay* d_rays, DPRTHit* d_hits, size_t num_rays) override;
 
   MeshID find_element(const Position& point) const override;
 

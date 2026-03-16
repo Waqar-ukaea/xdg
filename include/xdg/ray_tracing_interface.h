@@ -87,7 +87,7 @@ public:
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) = 0;
 
-  virtual void batch_ray_fire(TreeID tree, DPRTRay* rays, DPRTHit* hits, size_t num_rays)
+  virtual void batch_ray_fire(TreeID tree, DPRTRay* d_rays, DPRTHit* d_hits, size_t num_rays)
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }

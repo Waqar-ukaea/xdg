@@ -12,10 +12,6 @@
 
 #include "argparse/argparse.hpp"
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 using namespace xdg;
 
 int main(int argc, char** argv) {
@@ -105,46 +101,10 @@ else
   std::cout << "Origin: " << origin[0] << ", " << origin[1] << ", " << origin[2] << std::endl;
   std::cout << "Direction: " << direction[0] << ", " << direction[1] << ", " << direction[2] << std::endl;
 
-  std::pair<double, MeshID> result;
-
   xdg->prepare_volume_for_raytracing(volume);
   rti->init(); // Typically called during XDG::prepare_raytracer(). Required to build SBT after volume registration.
 
-  if (rt_lib == RTLibrary::DPRT) {
-
-    DPRTRay ray;
-    ray.origin = {origin[0], origin[1], origin[2]};
-    ray.direction = {direction[0], direction[1], direction[2]};
-    ray.tMin = 0.0;
-    ray.tMax = INFTY;
-
-    DPRTHit hit;
-    hit.primID = -1;
-    hit.instID = -1;
-    hit.geomUserData = 0;
-    hit.t = INFTY;
-    hit.u = 0.0;
-    hit.v = 0.0;
-
-    const int host_device = omp_get_initial_device();
-    const int gpu_device = 0;
-    auto* d_ray = static_cast<DPRTRay*>(omp_target_alloc(sizeof(DPRTRay), gpu_device));
-    auto* d_hit = static_cast<DPRTHit*>(omp_target_alloc(sizeof(DPRTHit), gpu_device));
-
-    omp_target_memcpy(d_ray, &ray, sizeof(DPRTRay), 0, 0, gpu_device, host_device);
-    omp_target_memcpy(d_hit, &hit, sizeof(DPRTHit), 0, 0, gpu_device, host_device);
-
-    xdg->batch_ray_fire(volume, d_ray, d_hit, 1);
-
-    omp_target_memcpy(&hit, d_hit, sizeof(DPRTHit), 0, 0, host_device, gpu_device);
-    omp_target_free(d_ray, gpu_device);
-    omp_target_free(d_hit, gpu_device);
-
-    result = {hit.t, static_cast<MeshID>(hit.geomUserData)};
-  } 
-  else {
-    result = xdg->ray_fire(volume, origin, direction);
-  }
+  auto result = xdg->ray_fire(volume, origin, direction);
 
   std::cout << std::setprecision(17) << "Distance: " << result.first << std::endl;
   std::cout << "Surface: " << result.second << std::endl;

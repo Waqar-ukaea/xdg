@@ -254,12 +254,12 @@ XDG::ray_fire(MeshID volume,
 
 void 
 XDG::batch_ray_fire(MeshID volume,
-                    DPRTRay* rays,
-                    DPRTHit* hits,
+                    DPRTRay* d_rays,
+                    DPRTHit* d_hits,
                     size_t num_rays)
 {
   TreeID scene = volume_to_surface_tree_map_.at(volume);
-  return ray_tracing_interface()->batch_ray_fire(scene, rays, hits, num_rays);
+  return ray_tracing_interface()->batch_ray_fire(scene, d_rays, d_hits, num_rays);
 }
 
 std::pair<double, MeshID> XDG::closest(MeshID volume,

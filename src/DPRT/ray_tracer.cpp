@@ -1,5 +1,6 @@
 #include "xdg/DPRT/ray_tracer.h"
-// #include "dprt/dprt.in.h"
+#include <omp.h>
+
 
 namespace xdg {
 
@@ -112,14 +113,43 @@ bool DPRTRayTracer::point_in_volume(TreeID,
   fatal_error("DPRT point_in_volume() is not implemented.");
 }
 
-std::pair<double, MeshID> DPRTRayTracer::ray_fire(TreeID,
-                                                  const Position&,
-                                                  const Direction&,
-                                                  const double,
-                                                  HitOrientation,
-                                                  std::vector<MeshID>* const)
+std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
+                                                  const Position& origin,
+                                                  const Direction& direction,
+                                                  const double dist_limit,
+                                                  HitOrientation orientation,
+                                                  std::vector<MeshID>* const exclude_primitves)
 {
-  fatal_error("DPRT ray_fire() is not implemented.");
+  auto model = surface_tree_to_model_.at(tree);
+  DPRTRay ray;
+  ray.origin = {origin[0], origin[1], origin[2]};
+  ray.direction = {direction[0], direction[1], direction[2]};
+  ray.tMin = 0.0;
+  ray.tMax = dist_limit;
+
+  DPRTHit hit;
+  hit.primID = -1;
+  hit.instID = -1;
+  hit.geomUserData = 0;
+  hit.t = INFTY;
+  hit.u = 0.0;
+  hit.v = 0.0;
+
+  const int host_device = omp_get_initial_device();
+  const int gpu_device = 0;
+  auto* d_ray = static_cast<DPRTRay*>(omp_target_alloc(sizeof(DPRTRay), gpu_device));
+  auto* d_hit = static_cast<DPRTHit*>(omp_target_alloc(sizeof(DPRTHit), gpu_device));
+
+  omp_target_memcpy(d_ray, &ray, sizeof(DPRTRay), 0, 0, gpu_device, host_device);
+  omp_target_memcpy(d_hit, &hit, sizeof(DPRTHit), 0, 0, gpu_device, host_device);
+
+  dprtTrace(model, d_ray, d_hit, 1);
+
+  omp_target_memcpy(&hit, d_hit, sizeof(DPRTHit), 0, 0, host_device, gpu_device);
+  omp_target_free(d_ray, gpu_device);
+  omp_target_free(d_hit, gpu_device);
+
+  return {hit.t, static_cast<MeshID>(hit.geomUserData)};
 }
 
 MeshID DPRTRayTracer::find_element(const Position&) const
@@ -143,8 +173,8 @@ bool DPRTRayTracer::occluded(TreeID, const Position&, const Direction&, double&)
 }
 
 void DPRTRayTracer::batch_ray_fire(TreeID tree,
-                                   DPRTRay* rays,
-                                   DPRTHit* hits,
+                                   DPRTRay* d_rays,
+                                   DPRTHit* d_hits,
                                    size_t num_rays)
 {
   if (num_rays == 0) {
@@ -152,7 +182,7 @@ void DPRTRayTracer::batch_ray_fire(TreeID tree,
     return;
   } 
   auto model = surface_tree_to_model_.at(tree);
-  dprtTrace(model, rays, hits, static_cast<int>(num_rays)); // Launch rays against the model
+  dprtTrace(model, d_rays, d_hits, static_cast<int>(num_rays)); // Launch rays against the model
 }
 
 // void DPRTRayTracer::ray_fire_prepared(const size_t, const double, HitOrientation)
