@@ -10,6 +10,7 @@
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/primitive_ref.h"
 #include "xdg/geometry_data.h"
+#include <dprt/dprt.h>
 
 namespace xdg
 {
@@ -85,6 +86,11 @@ public:
                                      const double dist_limit = INFTY,
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) = 0;
+
+  virtual void batch_ray_fire(TreeID tree, DPRTRay* rays, DPRTHit* hits, size_t num_rays)
+  {
+    fatal_error("GPU ray tracing not supported with this RayTracer backend");
+  }
 
   /**
    * @brief Finds the element containing a given point using the global element tree.

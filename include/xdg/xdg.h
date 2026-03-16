@@ -6,6 +6,7 @@
 
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/ray_tracing_interface.h"
+#include <dprt/dprt.h>
 
 
 namespace xdg {
@@ -74,6 +75,8 @@ std::pair<double, MeshID> ray_fire(MeshID volume,
                                    const double dist_limit = INFTY,
                                    HitOrientation orientation = HitOrientation::EXITING,
                                    std::vector<MeshID>* const exclude_primitives = nullptr) const;
+
+void batch_ray_fire(TreeID tree, DPRTRay* rays, DPRTHit* hits, size_t num_rays);
 
 std::pair<double, MeshID> closest(MeshID volume,
                                   const Position& origin) const;

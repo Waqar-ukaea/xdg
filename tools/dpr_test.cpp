@@ -134,7 +134,6 @@ int main(int argc, char** argv)
     hit.v = 0.0;
   }
 
-#ifdef _OPENMP
   const int host_device = omp_get_initial_device();
   const int gpu_device = 0;
   const size_t ray_bytes = num_rays * sizeof(DPRTRay);
@@ -151,14 +150,11 @@ int main(int argc, char** argv)
   omp_target_memcpy(d_rays, rays.data(), ray_bytes, 0, 0, gpu_device, host_device);
   omp_target_memcpy(d_hits, hits.data(), hit_bytes, 0, 0, gpu_device, host_device);
 
-  rti->dpr_trace(surface_tree, d_rays, d_hits, num_rays);
+  rti->batch_ray_fire(surface_tree, d_rays, d_hits, num_rays);
 
   omp_target_memcpy(hits.data(), d_hits, hit_bytes, 0, 0, host_device, gpu_device);
   omp_target_free(d_rays, gpu_device);
   omp_target_free(d_hits, gpu_device);
-#else
-  fatal_error("dpr-test requires OpenMP target offload support in this DPRT build.");
-#endif
 
   size_t num_hits = 0;
   for (const auto& hit : hits) {

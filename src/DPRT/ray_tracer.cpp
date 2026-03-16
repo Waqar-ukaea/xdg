@@ -30,11 +30,24 @@ TreeID DPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& me
   surface_trees_.push_back(tree);
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
 
+  if (volume_surfaces.empty()) {
+    fatal_error("Volume {} has no surfaces to register in DPRT.", volume_id);
+  }
+
   std::vector<DPRTTriangles> surface_meshes_list;
+  surface_meshes_list.reserve(volume_surfaces.size());
 
   for (const auto &surf : volume_surfaces) {
     auto vertices = mesh_manager->get_surface_vertices(surf);
-    auto indices = mesh_manager->get_surface_connectivity(surf);    
+    auto indices = mesh_manager->get_surface_connectivity(surf);
+
+    if (vertices.empty()) {
+      fatal_error("Surface {} for volume {} has no vertices.", surf, volume_id);
+    }
+    if (indices.size() % 3 != 0) {
+      fatal_error("Surface {} for volume {} has {} connectivity entries; expected a multiple of 3 for triangles.",
+                  surf, volume_id, indices.size());
+    }
     
     std::vector<DPRTvec3> vertexArray;
     vertexArray.reserve(vertices.size());
@@ -45,11 +58,21 @@ TreeID DPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& me
     std::vector<DPRTint3> indexArray;
     indexArray.reserve(indices.size() / 3);
     for (size_t i = 0; i < indices.size(); i += 3) {
+      const int i0 = indices[i];
+      const int i1 = indices[i + 1];
+      const int i2 = indices[i + 2];
+      const int vertex_count = static_cast<int>(vertices.size());
+      if (i0 < 0 || i0 >= vertex_count ||
+          i1 < 0 || i1 >= vertex_count ||
+          i2 < 0 || i2 >= vertex_count) {
+        fatal_error("Surface {} for volume {} has out-of-range triangle indices ({}, {}, {}) with {} surface vertices.",
+                    surf, volume_id, i0, i1, i2, vertices.size());
+      }
       indexArray.push_back(
-        DPRTint3{indices[i], indices[i + 1], indices[i + 2]}
+        DPRTint3{i0, i1, i2}
       );
     }
-
+    
     // Create a DPRT triangle mesh for this surface (BLAS)
     DPRTTriangles surface_mesh = dprtCreateTriangles(context_, surf, vertexArray.data(), vertexArray.size(), indexArray.data(), indexArray.size());
     surface_meshes_list.push_back(surface_mesh);
@@ -57,7 +80,7 @@ TreeID DPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& me
 
   // Create a DPRT group for this volume, containing all of its surface meshes
   DPRTGroup volume_group = dprtCreateTrianglesGroup(context_, surface_meshes_list.data(), surface_meshes_list.size());
-  // Create a DPRT model for this volume, with instances for each surface (TLAS)
+  // // Create a DPRT model for this volume, with instances for each surface (TLAS)
   DPRTModel model = dprtCreateModel(context_, &volume_group, nullptr, 1);
 
   surface_tree_to_model_[tree] = model;
@@ -119,13 +142,15 @@ bool DPRTRayTracer::occluded(TreeID, const Position&, const Direction&, double&)
   fatal_error("DPRT occluded() is not implemented.");
 }
 
-void DPRTRayTracer::dpr_trace(TreeID tree,
-                              DPRTRay* rays,
-                              DPRTHit* hits,
-                              size_t num_rays)
+void DPRTRayTracer::batch_ray_fire(TreeID tree,
+                                   DPRTRay* rays,
+                                   DPRTHit* hits,
+                                   size_t num_rays)
 {
-  if (num_rays == 0) return;
-
+  if (num_rays == 0) {
+    warning("Warning number of rays passed to ray_fire is 0. No work to be done."); 
+    return;
+  } 
   auto model = surface_tree_to_model_.at(tree);
   dprtTrace(model, rays, hits, static_cast<int>(num_rays)); // Launch rays against the model
 }
