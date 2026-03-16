@@ -23,4 +23,3 @@
 [submodule "vendor/deepeeRT"]
 	path = vendor/deepeeRT
 	url = https://github.com/ingowald/deepeeRT.git
-	branch = iw/openmp
