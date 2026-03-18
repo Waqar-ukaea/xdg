@@ -2,7 +2,11 @@
 #ifndef _XDG_MESH_MANAGER_INTERFACE
 #define _XDG_MESH_MANAGER_INTERFACE
 
+#include <algorithm>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "xdg/bbox.h"
@@ -82,10 +86,10 @@ public:
 
   std::vector<MeshID> get_volume_faces(MeshID volume) const;
 
-  // Return an array of connectivity indices for a given volume in the model
-  virtual std::vector<int> get_volume_connectivity(MeshID volume) const = 0;
+  // Return a vector of connectivity indices for a given volume in the model
+  virtual std::vector<int> get_volume_connectivity(MeshID volume) const;
 
-  virtual std::vector<Vertex> get_volume_vertices(MeshID volume) const = 0;
+  virtual std::vector<Vertex> get_volume_vertices(MeshID volume) const;
 
   virtual std::vector<MeshID> get_surface_faces(MeshID surface) const = 0;
   // TODO: can we accomplish this without allocating memory?
@@ -93,7 +97,7 @@ public:
 
   virtual std::array<Vertex, 3> face_vertices(MeshID element) const = 0;
 
-  virtual std::vector<Vertex> get_surface_vertices(MeshID surface) const = 0;
+  std::vector<Vertex> get_surface_vertices(MeshID surface) const;
 
   //! \brief Return a vertex ID given its index in the mesh
   virtual MeshID vertex_id(size_t vertex_idx) const
@@ -103,8 +107,8 @@ public:
   virtual MeshIndex vertex_index(MeshID vertex) const
   { return vertex_id_map_.id_to_index(vertex); }
 
-  // Return an array of connectivity indices for a given surface in the model
-  virtual std::vector<int> get_surface_connectivity(MeshID surface) const = 0;
+  // Return a vector of connectivity indices for a given surface in the model
+  std::vector<int> get_surface_connectivity(MeshID surface) const;
 
   virtual SurfaceElementType get_surface_element_type(MeshID element) const = 0;
 
@@ -142,6 +146,9 @@ public:
   //! \return A vector of vertex IDs that make up the element
   virtual
   std::vector<MeshID> element_connectivity(MeshID element) const = 0;
+  
+  virtual
+  std::vector<MeshID> face_connectivity(MeshID face) const = 0;
 
   BoundingBox element_bounding_box(MeshID element) const;
 
@@ -197,6 +204,7 @@ public:
   virtual MeshLibrary mesh_library() const = 0;
 
 protected:
+
   // metadata
   std::map<std::pair<MeshID, PropertyType>, Property> volume_metadata_;
   std::map<std::pair<MeshID, PropertyType>, Property> surface_metadata_;
@@ -212,6 +220,80 @@ protected:
 
   // TODO: attempt to remove this attribute
   MeshID implicit_complement_ {ID_NONE};
+
+private:
+  // Returning this struct lets us call the same function to return local mesh data for both vertices and connectivity
+  struct LocalMeshData {
+    std::vector<MeshID> vertex_ids; // Not strictly used but could be useful at somepoint i guess
+    std::vector<Vertex> vertices;
+    std::vector<int> connectivity;
+  };
+
+  // Private helper function to build local mesh data for a given set of entities (volumes or surfaces) and a connectivity function
+  // idk if i love this but it does reduce some code duplication instead of maintaining two separate methods for building surface vs volume local mesh data
+  template <typename EntitySet, typename ConnectivityFunc>
+  LocalMeshData local_mesh_data(const EntitySet& entities,
+                                ConnectivityFunc&& connectivity_func) const
+  {
+    std::vector<std::vector<MeshID>> entity_connectivities;
+    entity_connectivities.reserve(entities.size());
+
+    size_t total_connectivity_entries = 0;
+    for (auto entity : entities) {
+      auto conn = connectivity_func(entity);
+      total_connectivity_entries += conn.size();
+      entity_connectivities.push_back(std::move(conn));
+    }
+
+    std::vector<MeshID> unique_vertex_ids;
+    std::unordered_set<MeshID> seen_vertices;
+    unique_vertex_ids.reserve(total_connectivity_entries);
+    seen_vertices.reserve(total_connectivity_entries);
+
+    // Collect unique vertex IDs while preserving order of first occurrence
+    for (const auto& conn : entity_connectivities) {
+      for (auto vertex_id : conn) {
+        const auto [_, inserted] = seen_vertices.insert(vertex_id);
+        if (inserted) {
+          unique_vertex_ids.push_back(vertex_id);
+        }
+      }
+    }
+
+    // Sort unique vertex IDs by their index in the mesh to ensure consistent ordering
+    std::sort(unique_vertex_ids.begin(), unique_vertex_ids.end(),
+              [this](MeshID a, MeshID b) {
+                return vertex_index(a) < vertex_index(b);
+              });
+
+    // Create mapping from vertex ID to local index
+    std::unordered_map<MeshID, int> vertex_to_local;
+    vertex_to_local.reserve(unique_vertex_ids.size());
+    int local_index = 0;
+    for (auto vertex_id : unique_vertex_ids) {
+      vertex_to_local[vertex_id] = local_index++;
+    }
+
+    // Create LocalMeshData object to return
+    LocalMeshData data;
+    data.vertex_ids = std::move(unique_vertex_ids);
+    data.vertices.reserve(data.vertex_ids.size());
+    for (auto vertex_id : data.vertex_ids) {
+      data.vertices.push_back(vertex_coordinates(vertex_id)); // get coords from vertex ID
+    }
+
+    data.connectivity.reserve(total_connectivity_entries);
+    for (const auto& conn : entity_connectivities) {
+      for (auto vertex_id : conn) {
+        data.connectivity.push_back(vertex_to_local.at(vertex_id)); // convert to local index connectivity
+      }
+    }
+
+    return data;
+  }
+
+  LocalMeshData surface_local_mesh_data(MeshID surface) const;
+  LocalMeshData volume_local_mesh_data(MeshID volume) const;
 };
 
 } // namespace xdg

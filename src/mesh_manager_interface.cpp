@@ -1,6 +1,5 @@
 #include "xdg/mesh_manager_interface.h"
 
-#include <algorithm>
 #include <set>
 
 #include "xdg/config.h"
@@ -271,6 +270,48 @@ std::pair<MeshID, MeshID>
 MeshManager::get_parent_volumes(MeshID surface) const
 {
   return this->surface_senses(surface);
+}
+
+MeshManager::LocalMeshData
+MeshManager::surface_local_mesh_data(MeshID surface) const
+{
+  const auto faces = get_surface_faces(surface);
+  const auto connectivity_func = [this](MeshID face) {
+    return face_connectivity(face);
+  };
+
+  return local_mesh_data(faces, connectivity_func);
+}
+
+MeshManager::LocalMeshData
+MeshManager::volume_local_mesh_data(MeshID volume) const
+{
+  const auto elements = get_volume_elements(volume);
+  const auto connectivity_func = [this](MeshID element) {
+    return element_connectivity(element);
+  };
+
+  return local_mesh_data(elements, connectivity_func);
+}
+
+std::vector<Vertex> MeshManager::get_surface_vertices(MeshID surface) const
+{
+  return surface_local_mesh_data(surface).vertices;
+}
+
+std::vector<int> MeshManager::get_surface_connectivity(MeshID surface) const
+{
+  return surface_local_mesh_data(surface).connectivity;
+}
+
+std::vector<Vertex> MeshManager::get_volume_vertices(MeshID volume) const
+{
+  return volume_local_mesh_data(volume).vertices;
+}
+
+std::vector<int> MeshManager::get_volume_connectivity(MeshID volume) const
+{
+  return volume_local_mesh_data(volume).connectivity;
 }
 
 } // namespace xdg

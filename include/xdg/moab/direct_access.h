@@ -64,6 +64,12 @@ public:
     return {conn.begin(), conn.end()};
   }
 
+  //! \brief Get the connectivity of a face
+  inline std::vector<MeshID> get_face_connectivity(const EntityHandle& face) {
+    auto conn = face_data_.get_connectivity_indices<3>(face);
+    return {conn.begin(), conn.end()};
+  }
+
   //! \brief Get the coordinates of a triangle as XDG Vertices
   inline std::array<xdg::Vertex, 4> get_element_coords(const EntityHandle& element) {
     auto [i0, i1, i2, i3] = element_data_.get_connectivity_indices<4>(element);
