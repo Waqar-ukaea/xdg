@@ -14,6 +14,7 @@
 #include "xdg/xdg.h"
 #include "xdg/embree/ray_tracer.h"
 
+
 using namespace xdg;
 
 void print_intersection(std::pair<double, MeshID> intersection) {
@@ -399,12 +400,14 @@ TEST_CASE("LibMesh Element ID and Index Mapping")
 
   // test mapping for non-contiguous IDs via manual modification
   {
+    // create libMesh mesh object and load the mesh
+    std::unique_ptr<libMesh::Mesh> mesh = std::make_unique<libMesh::Mesh>(*XDGConfig::config().libmesh_comm(), 3);
+    mesh->read("jezebel.exo");
+
     // now create a new mesh manager (create explicitly so we can modify the mesh before init)
-    std::unique_ptr<LibMeshManager> mesh_manager  {std::make_unique<LibMeshManager>()};
-    mesh_manager->load_file("jezebel.exo");
+    std::unique_ptr<LibMeshManager> mesh_manager = std::make_unique<LibMeshManager>(mesh.get());
 
     // tweak some of the element IDs to create gaps
-    auto* mesh = mesh_manager->mesh();
     int next_id = 0;
     std::vector<MeshID> modified_element_ids;
     for (auto* elem : mesh->active_element_ptr_range()) {
@@ -436,6 +439,7 @@ TEST_CASE("LibMesh Element ID and Index Mapping")
     // keep libMesh from renumbering the elements when initializing the mesh
     // manager for the purposes of this test
     mesh->allow_renumbering(false);
+    mesh->prepare_for_use();
 
     // now initialize the mesh manager
     mesh_manager->init();
