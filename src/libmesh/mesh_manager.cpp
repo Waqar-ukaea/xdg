@@ -14,18 +14,21 @@
 namespace xdg {
 
 // Constructors
-LibMeshManager::LibMeshManager(void *ptr) {}
+LibMeshManager::LibMeshManager(const libMesh::MeshBase* ptr) {
+  mesh_ = ptr;
+}
 
 LibMeshManager::LibMeshManager() : MeshManager() {}
 
 void LibMeshManager::load_file(const std::string &filepath) {
-  mesh_ = std::make_unique<libMesh::Mesh>(*XDGConfig::config().libmesh_comm(), 3);
-  mesh_->read(filepath);
+  managed_mesh_ = std::make_unique<libMesh::Mesh>(*XDGConfig::config().libmesh_comm(), 3);
+  managed_mesh_->read(filepath);
+  mesh_ = managed_mesh_.get();
 }
 
 void LibMeshManager::init() {
   // ensure that the mesh is 3-dimensional, for our use case this is expected
-  if (mesh_->mesh_dimension() != 3) {
+  if (mesh()->mesh_dimension() != 3) {
     fatal_error("Mesh must be 3-dimensional");
   }
 
@@ -68,14 +71,13 @@ void LibMeshManager::init() {
   // the mesh-based topology of the geometry
   determine_surface_senses();
 
-  // create a sideset for all faces on the boundary of the mesh
-  create_boundary_sideset();
-
   // create an implicit complement
   create_implicit_complement();
 
   // libMesh initialization
-  mesh()->prepare_for_use();
+  if (managed_mesh_) {
+    managed_mesh_->prepare_for_use();
+  }
 
   map_id_spaces();
 }
@@ -367,25 +369,6 @@ void LibMeshManager::determine_surface_senses() {
   }
 }
 
-void LibMeshManager::create_boundary_sideset() {
-  auto& boundary_info = mesh_->get_boundary_info();
-  auto boundary_ids = boundary_info.get_boundary_ids();
-  int next_boundary_id = boundary_ids.size() == 0 ? 1 : *std::max_element(boundary_ids.begin(), boundary_ids.end()) + 1;
-
-  // put all mesh boundary elements in a special sideset that we can
-  // reference later if needed
-  // (any faces that are part of the implicit complement in DAGMC parlance)
-  for (auto &[id, elem_side] : subdomain_interface_map_) {
-    if (id.first == ID_NONE || id.second == ID_NONE) {
-      for (const auto &elem : elem_side) {
-        auto pair = sidepair(elem);
-        boundary_info.add_side(pair.first(), pair.side_num(), next_boundary_id);
-      }
-    }
-  }
-  boundary_info.sideset_name(next_boundary_id) = "xdg_boundary";
-}
-
 std::vector<MeshID>
 LibMeshManager::get_volume_elements(MeshID volume) const {
   std::vector<MeshID> elements;
@@ -416,11 +399,11 @@ LibMeshManager::get_surface_faces(MeshID surface) const {
 
 std::vector<Vertex>
 LibMeshManager::element_vertices(MeshID element) const {
-  std::vector<Vertex> vertices;
-  auto elem = mesh()->elem_ptr(element);
-  for (unsigned int i = 0; i < elem->n_nodes(); ++i) {
-    auto node = elem->node_ref(i);
-    vertices.push_back({node(0), node(1), node(2)});
+  const auto& elem = mesh()->elem_ref(element);
+  std::vector<Vertex> vertices(elem.n_nodes());
+  for (unsigned int i = 0; i < elem.n_nodes(); ++i) {
+    const auto& node = elem.node_ref(i);
+    vertices[i] = {node(0), node(1), node(2)};
   }
   return vertices;
 }

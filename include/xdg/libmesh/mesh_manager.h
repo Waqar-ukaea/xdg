@@ -20,7 +20,7 @@ class LibMeshManager : public MeshManager {
   constexpr static int SIDE_NONE {-1};
 
 public:
-  LibMeshManager(void* ptr);
+  LibMeshManager(const libMesh::MeshBase* ptr);
 
   LibMeshManager();
 
@@ -53,10 +53,6 @@ public:
   //! the senses of the parent volumes (mesh blocks) for each surface, updating
   //! curent SidePair objects to do so if necessary.
   void determine_surface_senses();
-
-  //! Create a new sideset for all faces on the boundary of the mesh.
-  //! This is used for re-entrant particles if needed.
-  void create_boundary_sideset();
 
   // Interface methods
   MeshLibrary mesh_library() const override { return MeshLibrary::LIBMESH; }
@@ -133,8 +129,7 @@ public:
   Sense surface_sense(MeshID surface, MeshID volume) const override;
 
   // Accessors
-  const libMesh::Mesh* mesh() const { return mesh_.get(); }
-  libMesh::Mesh* mesh() { return mesh_.get(); }
+  const libMesh::MeshBase* mesh() const { return mesh_; }
 
   private:
   //! Helper struct for unique identification of an element face
@@ -304,7 +299,10 @@ public:
 
   // Attributes
   protected:
-  std::unique_ptr<libMesh::Mesh> mesh_ {nullptr};
+  // a mesh managed by this class (if loading from a file)
+  std::unique_ptr<libMesh::Mesh> managed_mesh_ {nullptr};
+  // a pointer to the mesh this class is using for data-structure queries (may be managed externally)
+  const libMesh::MeshBase* mesh_ {nullptr};
 
   // Ugh, double mapping
   std::unordered_map<MeshID, SidePair> mesh_id_to_sidepair_;
