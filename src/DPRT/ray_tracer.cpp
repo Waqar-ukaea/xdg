@@ -126,7 +126,7 @@ std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
   ray.direction = {direction[0], direction[1], direction[2]};
   ray.tMin = 0.0;
   ray.tMax = dist_limit;
-
+  
   DPRTHit hit;
   hit.primID = -1;
   hit.instID = -1;
@@ -135,21 +135,31 @@ std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
   hit.u = 0.0;
   hit.v = 0.0;
 
+  int64_t rayFlags = DPRT_FLAGS_NONE; 
+  if (orientation == HitOrientation::ENTERING)
+    rayFlags = DPRT_CULL_BACK;
+  else if (orientation == HitOrientation::EXITING) 
+    rayFlags = DPRT_CULL_FRONT;
+
   const int host_device = omp_get_initial_device();
   const int gpu_device = 0;
   auto* d_ray = static_cast<DPRTRay*>(omp_target_alloc(sizeof(DPRTRay), gpu_device));
   auto* d_hit = static_cast<DPRTHit*>(omp_target_alloc(sizeof(DPRTHit), gpu_device));
-
+  
   omp_target_memcpy(d_ray, &ray, sizeof(DPRTRay), 0, 0, gpu_device, host_device);
   omp_target_memcpy(d_hit, &hit, sizeof(DPRTHit), 0, 0, gpu_device, host_device);
 
-  dprtTrace(model, d_ray, d_hit, 1);
+  dprtTrace(model, d_ray, d_hit, 1, rayFlags);
 
   omp_target_memcpy(&hit, d_hit, sizeof(DPRTHit), 0, 0, host_device, gpu_device);
   omp_target_free(d_ray, gpu_device);
   omp_target_free(d_hit, gpu_device);
 
-  return {hit.t, static_cast<MeshID>(hit.geomUserData)};
+  MeshID surface_hit = static_cast<MeshID>(hit.geomUserData);
+  if (surface_hit == 0) 
+    surface_hit = ID_NONE;
+
+  return {hit.t, surface_hit};
 }
 
 MeshID DPRTRayTracer::find_element(const Position&) const
@@ -172,6 +182,7 @@ bool DPRTRayTracer::occluded(TreeID, const Position&, const Direction&, double&)
   fatal_error("DPRT occluded() is not implemented.");
 }
 
+// Assumes rays populated by an external application
 void DPRTRayTracer::batch_ray_fire(TreeID tree,
                                    DPRTRay* d_rays,
                                    DPRTHit* d_hits,
