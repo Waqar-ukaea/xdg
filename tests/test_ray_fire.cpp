@@ -99,15 +99,19 @@ TEMPLATE_TEST_CASE("Ray Fire on MeshMock (per-backend sections)", "[rayfire][moc
     REQUIRE(intersection.second != ID_NONE);
     REQUIRE_THAT(intersection.first, Catch::Matchers::WithinAbs(5.0, 1e-6));
 
-    // Test excluding primitives, fire a ray from the origin and log the hit face
-    // By providing the hit face as an excluded primitive in a subsequent ray fire,
-    // there should be no intersection returned
-    std::vector<MeshID> exclude_primitives;
-    intersection = rti->ray_fire(volume_tree, origin, direction, INFTY, HitOrientation::EXITING, &exclude_primitives);
-    REQUIRE_THAT(intersection.first, Catch::Matchers::WithinAbs(5.0, 1e-6));
-    REQUIRE(exclude_primitives.size() == 1);
+    // Skip exclude prims tests with DPRTRayTracer since DPRT has no support for custom intersection logic
+    if constexpr (rt_backend != RTLibrary::DPRT)
+    {
+      // Test excluding primitives, fire a ray from the origin and log the hit face
+      // By providing the hit face as an excluded primitive in a subsequent ray fire,
+      // there should be no intersection returned
+      std::vector<MeshID> exclude_primitives;
+      intersection = rti->ray_fire(volume_tree, origin, direction, INFTY, HitOrientation::EXITING, &exclude_primitives);
+      REQUIRE_THAT(intersection.first, Catch::Matchers::WithinAbs(5.0, 1e-6));
+      REQUIRE(exclude_primitives.size() == 1);
 
-    intersection = rti->ray_fire(volume_tree, origin, direction, INFTY, HitOrientation::EXITING, &exclude_primitives);
-    REQUIRE(intersection.second == ID_NONE);
+      intersection = rti->ray_fire(volume_tree, origin, direction, INFTY, HitOrientation::EXITING, &exclude_primitives);
+      REQUIRE(intersection.second == ID_NONE);
+    }
   }
 }
