@@ -105,12 +105,81 @@ void DPRTRayTracer::create_global_element_tree()
   warning("DPRT global element tree creation is not implemented.");
 }
 
-bool DPRTRayTracer::point_in_volume(TreeID,
-                                    const Position&,
-                                    const Direction*,
-                                    const std::vector<MeshID>*) const
+bool DPRTRayTracer::point_in_volume(TreeID tree,
+                                    const Position& point,
+                                    const Direction* direction,
+                                    const std::vector<MeshID>* exclude_primitives) const
 {
-  fatal_error("DPRT point_in_volume() is not implemented.");
+  // TODO: DPRT does not currently support exclude_primitives in this query path.
+
+  auto model = surface_tree_to_model_.at(tree);
+
+  Direction directionUsed = (direction != nullptr) ? Direction{direction->x, direction->y, direction->z} 
+                            : Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
+
+/*
+  DPRT also does not expose programmable hit/intersection shaders, so we
+  cannot inject custom point-in-volume logic into traversal.
+
+  As a workaround, we trace the same ray twice:
+  - `DPRT_CULL_BACK` keeps only entering intersections
+  - `DPRT_CULL_FRONT` keeps only exiting intersections
+
+  We then classify the point by comparing the nearest entering and exiting hits:
+  - neither hit: outside
+  - exiting hit only: inside
+  - entering hit only: outside
+  - both hit: inside if `exitHit.t < enterHit.t`
+*/
+
+  DPRTHit hits[2]{};
+  for (auto& h : hits) {
+    h.primID = -1;
+    h.instID = -1;
+    h.geomUserData = 0;
+    h.t = INFTY;
+  }
+
+  // We can however use the same ray with different rayflags applied for culling entering vs exiting hits
+  DPRTRay ray{};
+  ray.origin = {point[0], point[1], point[2]};
+  ray.direction = {directionUsed[0], directionUsed[1], directionUsed[2]};
+  ray.tMax = INFTY;
+  ray.tMin = -1e-12; // small negative tolerance to avoid self intersections in PIV queries (tests on boundaries fail otherwise :/)
+  // TODO - is the same negative tolerance needed for ray_fire??
+
+  const int host_device = omp_get_initial_device();
+  const int gpu_device = 0;
+
+  auto* d_ray = static_cast<DPRTRay*>(omp_target_alloc(sizeof(DPRTRay), gpu_device));
+  auto* d_hits = static_cast<DPRTHit*>(omp_target_alloc(2 * sizeof(DPRTHit), gpu_device));
+
+  omp_target_memcpy(d_ray, &ray, sizeof(DPRTRay), 0, 0, gpu_device, host_device);
+  omp_target_memcpy(d_hits, hits, 2 * sizeof(DPRTHit), 0, 0, gpu_device, host_device);
+
+  constexpr int numRays = 1;
+  DPRTHit* d_enterHit = d_hits;
+  DPRTHit* d_exitHit = d_hits + 1;
+
+  dprtTrace(model, d_ray, d_enterHit, numRays, DPRT_CULL_BACK);  // nearest entering hit
+  dprtTrace(model, d_ray, d_exitHit, numRays, DPRT_CULL_FRONT);  // nearest exiting hit
+
+  omp_target_memcpy(hits, d_hits, 2 * sizeof(DPRTHit), 0, 0, host_device, gpu_device);
+
+  // Recover the two hit structs
+  DPRTHit& enterHit = hits[0];
+  DPRTHit& exitHit  = hits[1];
+
+  omp_target_free(d_ray, gpu_device);
+  omp_target_free(d_hits, gpu_device);
+
+  const bool hasEnter = enterHit.primID != -1; // check if entering ray returns a hit
+  const bool hasExit = exitHit.primID != -1; // check if exiting ray returns a hit
+
+  if (!hasEnter && !hasExit) return false; // neither hit: outside
+  if (!hasEnter && hasExit) return true; // exiting hit only: inside
+  if (hasEnter && !hasExit) return false; // entering hit only: outside
+  return exitHit.t < enterHit.t; // both hit: inside if `exitHit.t < enterHit.t`
 }
 
 std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
@@ -120,16 +189,18 @@ std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
                                                   HitOrientation orientation,
                                                   std::vector<MeshID>* const exclude_primitves)
 {
+  // TODO: DPRT does not currently support exclude_primitives in this query path.
+
   auto model = surface_tree_to_model_.at(tree);
   DPRTRay ray;
   ray.origin = {origin[0], origin[1], origin[2]};
   ray.direction = {direction[0], direction[1], direction[2]};
-  ray.tMin = 0.0;
   ray.tMax = dist_limit;
+  ray.tMin = 0.0;
   
   DPRTHit hit;
-  hit.primID = -1;
   hit.instID = -1;
+  hit.primID = -1;
   hit.geomUserData = 0;
   hit.t = INFTY;
   hit.u = 0.0;
@@ -149,7 +220,9 @@ std::pair<double, MeshID> DPRTRayTracer::ray_fire(SurfaceTreeID tree,
   omp_target_memcpy(d_ray, &ray, sizeof(DPRTRay), 0, 0, gpu_device, host_device);
   omp_target_memcpy(d_hit, &hit, sizeof(DPRTHit), 0, 0, gpu_device, host_device);
 
-  dprtTrace(model, d_ray, d_hit, 1, rayFlags);
+  constexpr int numRays = 1;
+
+  dprtTrace(model, d_ray, d_hit, numRays, rayFlags);
 
   omp_target_memcpy(&hit, d_hit, sizeof(DPRTHit), 0, 0, host_device, gpu_device);
   omp_target_free(d_ray, gpu_device);
@@ -195,15 +268,5 @@ void DPRTRayTracer::batch_ray_fire(TreeID tree,
   auto model = surface_tree_to_model_.at(tree);
   dprtTrace(model, d_rays, d_hits, static_cast<int>(num_rays)); // Launch rays against the model
 }
-
-// void DPRTRayTracer::ray_fire_prepared(const size_t, const double, HitOrientation)
-// {
-//   fatal_error("DPRT ray_fire_prepared() is not implemented.");
-// }
-
-// void DPRTRayTracer::populate_rays_external(size_t, const RayPopulationCallback&)
-// {
-//   fatal_error("DPRT populate_rays_external() is not implemented.");
-// }
 
 } // namespace xdg
