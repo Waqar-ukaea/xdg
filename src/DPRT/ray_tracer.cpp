@@ -118,8 +118,11 @@ bool DPRTRayTracer::point_in_volume(TreeID tree,
                             : Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
 
 /*
-  DPRT also does not expose programmable hit/intersection shaders, so we
-  cannot inject custom point-in-volume logic into traversal.
+  DPRT does not return the normals of the primitives hit as Embree does so we cant
+  simply take the dot product of ray direction against normal hit to determine PIV.
+  
+  DPRT also does not expose programmable hit/intersection shaders either, 
+  so we cannot inject custom point-in-volume logic into traversal.
 
   As a workaround, we trace the same ray twice:
   - `DPRT_CULL_BACK` keeps only entering intersections
