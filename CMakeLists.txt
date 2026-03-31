@@ -69,32 +69,103 @@ if (XDG_ENABLE_EMBREE)
   message(STATUS "Found Embree ${EMBREE_VERSION} at ${EMBREE_ROOT_DIR}")
 endif()
 
-# Catch2 testing module
+#===============================================================================
+# Update git submodules as needed (borrowed from OpenMC)
+#===============================================================================
+find_package(Git REQUIRED)
+
+set(VENDOR_PATHS
+  vendor/indicators
+  vendor/linalg
+)
+
+# attempt to find external fmt
+find_package(fmt QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+if(NOT fmt_FOUND)
+  list(APPEND VENDOR_PATHS vendor/fmt)
+endif()
+
+# attempt to find external Catch2
 if (XDG_BUILD_TESTS)
   find_package(Catch2 QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+  if(NOT Catch2_FOUND)
+    list(APPEND VENDOR_PATHS vendor/catch2)
+  endif()
+endif()
+
+if(XDG_BUILD_TESTS)
+  list(APPEND VENDOR_PATHS
+    tests/test_files
+  )
+endif()
+
+if(XDG_BUILD_TOOLS)
+  list(APPEND VENDOR_PATHS
+    vendor/argparse
+  )
+endif()
+
+if(XDG_ENABLE_GPRT)
+  list(APPEND VENDOR_PATHS
+    vendor/GPRT
+  )
+endif()
+
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  option(XDG_GIT_SUBMODULE "Check submodules during build" ON)
+  if(XDG_GIT_SUBMODULE)
+    message(STATUS "Submodule update")
+    foreach(VENDOR_PATH ${VENDOR_PATHS})
+      message(STATUS "Updating submodule at ${VENDOR_PATH}")
+      execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive ${CMAKE_CURRENT_SOURCE_DIR}/${VENDOR_PATH}
+                      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                      RESULT_VARIABLE GIT_SUBMOD_RESULT)
+      if(NOT GIT_SUBMOD_RESULT EQUAL 0)
+        message(FATAL_ERROR
+          "git submodule update --init failed with erro code ${GIT_SUBMOD_RESULT}, "
+          "please checkout submodule at ${VENDOR_PATH} manually and try again.")
+      endif()
+    endforeach()
+  endif()
+endif()
+
+foreach(VENDOR_PATH ${VENDOR_PATHS})
+  file(GLOB _xdg_vendor_readmes "${CMAKE_CURRENT_SOURCE_DIR}/${VENDOR_PATH}/README.*")
+  if(NOT _xdg_vendor_readmes)
+    message(FATAL_ERROR
+      "The vendored dependency at ${VENDOR_PATH} is missing. "
+      "Expected a README.* file. Please update submodules and try again.")
+  endif()
+endforeach()
+
+# Catch2 testing module
+if (XDG_BUILD_TESTS)
   if (NOT Catch2_FOUND)
     add_subdirectory("vendor/catch2")
   endif()
   include(CTest)
   include(Catch)
+  message(STATUS "Using Catch2 ${Catch2_VERSION} at ${Catch2_DIR}")
 endif()
 
 
 # fmt
-find_package(fmt QUIET NO_SYSTEM_ENVIRONMENT_PATH)
 if (NOT fmt_FOUND)
   set(FMT_INSTALL ON CACHE BOOL "Generate the fmt install target")
   add_subdirectory(vendor/fmt)
-else()
-  message(STATUS "Found fmt ${fmt_VERSION} at ${fmt_DIR}")
+endif()
+message(STATUS "Using fmt ${fmt_VERSION} at ${fmt_DIR}")
+
+if(XDG_BUILD_TOOLS)
+  # argparse
+  add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/argparse)
+  # indicators (progress bars)
+  # ensure indicators targets are exported and installed
+  set(INDICATORS_INSTALL ON CACHE STRING "Ensure indicators targets are provided")
 endif()
 
-# argparse
-add_subdirectory(vendor/argparse)
-# indicators (progress bars)
-# ensure indicators targets are exported and installed
-set(INDICATORS_INSTALL ON CACHE STRING "Ensure indicators targets are provided")
-add_subdirectory(vendor/indicators)
+# TODO: refactor so this is only needed when tools are enabled
+add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/indicators)
 
 # Ensure at least one mesh backend is enabled
 if (NOT XDG_ENABLE_MOAB AND NOT XDG_ENABLE_LIBMESH)
@@ -198,8 +269,6 @@ endif()
 
 add_library(xdg SHARED ${xdg_sources})
 
-target_link_libraries(xdg indicators::indicators)
-
 if(XDG_ENABLE_EMBREE)
   # pass precompile definition depending on embree version
   if (${EMBREE_VERSION} VERSION_GREATER_EQUAL 4.0.0)
@@ -252,12 +321,17 @@ if (XDG_ENABLE_GPRT)
   target_link_options(xdg INTERFACE -Wl,--unresolved-symbols=ignore-in-shared-libs)
 endif()
 
+target_link_libraries(xdg fmt::fmt)
+
+#TODO: refactor to only be required when tools are enabled
+target_link_libraries(xdg indicators::indicators)
+
 # ==========================
 # Link ray tracing libraries
 # ==========================
 
 if (XDG_ENABLE_EMBREE)
-  target_link_libraries(xdg embree fmt::fmt)
+  target_link_libraries(xdg embree)
 endif()
 
 if (XDG_ENABLE_GPRT)
