@@ -8,7 +8,7 @@
 // xdg includes
 #include "xdg/config.h"
 #include "xdg/error.h"
-#include "xdg/overlap.h"
+#include "../tools/overlap.h"
 
 using namespace xdg;
 

@@ -50,6 +50,18 @@ foreach(test ${TEST_NAMES})
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
 
+# overlap checking was moved into tools/, so this test now builds the tool
+# implementation directly in addition to linking against the xdg library
+
+if (TARGET test_overlap_check)
+    target_sources(test_overlap_check PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../tools/overlap.cpp
+    )
+    target_include_directories(test_overlap_check PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../tools
+    )
+endif()
+
 
 set(
 TEST_FILES

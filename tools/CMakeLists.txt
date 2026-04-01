@@ -31,3 +31,9 @@ foreach(tool ${TOOL_NAMES})
     endif()
     install(TARGETS ${tool_exec} DESTINATION ${CMAKE_INSTALL_BINDIR}/tools)
 endforeach()
+
+if (TARGET overlap-check)
+    target_sources(overlap-check PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/overlap.cpp
+    )
+endif()

@@ -7,7 +7,7 @@
 #include <indicators/block_progress_bar.hpp>
 
 #include "xdg/error.h"
-#include "xdg/util/progress_bars.h"
+#include "progress_bars.h"
 #include "xdg/vec3da.h"
 #include "xdg/timer.h"
 #include "xdg/bbox.h"
