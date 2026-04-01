@@ -1,8 +1,8 @@
 #include <fstream>
 #include <map>
 
-#include "xdg/util/progress_bars.h"
-#include "xdg/overlap.h"
+#include "progress_bars.h"
+#include "overlap.h"
 
 using namespace xdg;
 
