@@ -34,8 +34,8 @@ if (XDG_ENABLE_MOAB AND XDG_ENABLE_LIBMESH)
 endif()
 
 # placing this last as it's a slow test
-if (XDG_ENABLE_MOAB)
-    list(APPEND TEST_NAMES test_overlap_check)
+if (XDG_ENABLE_MOAB AND XDG_BUILD_TOOLS) # There isn't really any reason why this can't run with libmesh but its a slow test already so i dont see the point in running the test for each of moab and libmesh
+    list(APPEND TEST_NAMES test_overlap_check) # This test is only built if tools are enabled
 endif()
 
 foreach(test ${TEST_NAMES})

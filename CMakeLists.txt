@@ -75,7 +75,6 @@ endif()
 find_package(Git REQUIRED)
 
 set(VENDOR_PATHS
-  vendor/indicators
   vendor/linalg
 )
 
@@ -102,6 +101,7 @@ endif()
 if(XDG_BUILD_TOOLS)
   list(APPEND VENDOR_PATHS
     vendor/argparse
+    vendor/indicators
   )
 endif()
 
@@ -162,10 +162,9 @@ if(XDG_BUILD_TOOLS)
   # indicators (progress bars)
   # ensure indicators targets are exported and installed
   set(INDICATORS_INSTALL ON CACHE STRING "Ensure indicators targets are provided")
+  add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/indicators)
 endif()
 
-# TODO: refactor so this is only needed when tools are enabled
-add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/indicators)
 
 # Ensure at least one mesh backend is enabled
 if (NOT XDG_ENABLE_MOAB AND NOT XDG_ENABLE_LIBMESH)
@@ -321,9 +320,6 @@ if (XDG_ENABLE_GPRT)
 endif()
 
 target_link_libraries(xdg fmt::fmt)
-
-#TODO: refactor to only be required when tools are enabled
-# target_link_libraries(xdg indicators::indicators)
 
 # ==========================
 # Link ray tracing libraries
