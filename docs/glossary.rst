@@ -6,6 +6,12 @@ Glossary
 
 .. glossary::
 
+    AS
+        (Ray tracing) Acceleration Structure
+        A data structure that is used to accelerate ray tracing operations by
+        organizing the geometry in a way that allows for efficient traversal and
+        intersection testing.
+
     BVH
         Bounding Volume hierarchy
 
@@ -29,8 +35,35 @@ Glossary
     `DAGMC <https://svalinn.github.io/DAGMC/index.html>`_
         Direct Accelerated Geometry Monte Carlo toolkit
 
+    `Double-Down <https://double-down.readthedocs.io/en/latest/>`_
+        A ray tracing extension for DAGMC that provides support for double-precision
+        ray tracing on CAD-based geometries using Intel Embree.
+
+    `DPRT <https://github.com/NVIDIA/deepeeRT>`_
+        DeePeeRT (Double Precision Ray Tracing Toolkit) - A "Basics-only" Ray Tracing Library
+        intended specifically for Double-Precision Ray Tracing being developed by NVIDIA.
+
+    `Embree <https://www.embree.org/>`_
+        A collection of high-performance CPU ray tracing kernels developed by Intel.
+
+    EntitySet
+        An arbitrary collection of entities in MOAB, including other
+        `EntitySet`'s. Parent-child relationships between `EntitySet`'s can also
+        be established. Synonymous with the term :term:`MeshSet`.
+
     FEA
         Finite Element Analysis
+
+    `GPRT <https://github.com/gprt-org/GPRT>`_
+        General Purpose Raytracing Toolkit - A vulkan based GPU accelerated ray tracing
+        library capable of both GPU software and hardware accelerated ray tracing.
+
+    `libMesh <https://libmesh.github.io/>`_
+        A C++ finite element library that provides a framework for the
+        development of parallel adaptive finite element methods.
+
+    MeshSet
+        A collection of entities in MOAB. Synonymous with :term:`EntitySet`.
 
     `MOAB <https://sigma.mcs.anl.gov/moab-library/>`_
         Mesh-Oriented datABase
@@ -38,29 +71,13 @@ Glossary
     `OpenMC <https://docs.openmc.org>`_
         An open-source Monte Carlo code for neutron and photon transport.
 
-    EntitySet
-        An arbitrary collection of entities in MOAB, including other
-        `EntitySet`'s. Parent-child relationships between `EntitySet`'s can also
-        be established. Synonymous with the term :term:`MeshSet`.
-
-    MeshSet
-        A collection of entities in MOAB. Synonymous with :term:`EntitySet`.
-
-    Tag
-        A named data field that can be associated with entities in MOAB. Each
-        tag has an immutable data type. The size of the data can be fixed or
-        variable.
-
-    `GPRT <https://github.com/gprt-org/GPRT>`_
-        General Purpose Raytracing Toolkit - A vulkan based GPU accelerated ray tracing
-        library capable of both GPU software and hardware accelerated ray tracing.
-    
-    `DPRT <https://github.com/NVIDIA/deepeeRT>`_
-        DeePeeRT (Double Precision Ray Tracing Toolkit) - A "Basics-only" Ray Tracing Library 
-        intended specifically for Double-Precision Ray Tracing being developed by NVIDIA.
-
-    XDG
-        Accelerated Discretized Geometry
+    RT hardware acceleration
+        The use of specialized hardware, such as dedicated ray tracing cores,
+        avalaible on GPUs to signifciantly accelerate ray tracing operations.
+        Such hardware can perform ray-triangle intersections and BVH traversal
+        much faster than even GPU software implementations of ray tracing algorithms.
+        However, they are limited to single precision support and often require
+        vendor-specific APIs to target.
 
     subdomain
         A region of a mesh that is bounded by surfaces. In the context of XDG,
@@ -68,6 +85,10 @@ Glossary
         treated as interfaces between different materials. Also refferred to as
         a mesh block.
 
-    `libMesh <https://libmesh.github.io/>`_
-        A C++ finite element library that provides a framework for the
-        development of parallel adaptive finite element methods.
+    Tag
+        A named data field that can be associated with entities in MOAB. Each
+        tag has an immutable data type. The size of the data can be fixed or
+        variable.
+
+    XDG
+        Accelerated Discretized Geometry
