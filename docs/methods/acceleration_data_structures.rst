@@ -12,10 +12,7 @@ likely to be hit.
 
 Based on the XDG design philosophy (see :ref:`design_philosophy`), the BVH is
 constructed by leveraging state-of-the-art ray tracing libraries. On CPUs, XDG
-relies on the Embree ray tracing kernels for BVH construction and traversal. On
-GPUs, XDG relies on :term:`GPRT` as a vendor-agnostic interface for ray tracing
-pipelines that can leverage the GPU's hardware acceleration for BVH construction
-or modern software-based implementations of BVH traversal.
+relies on the Embree ray tracing kernels for BVH construction and traversal. 
 
 Mixed Precision Ray Tracing
 ===========================
@@ -38,3 +35,24 @@ in terms of performance.
        Tracing of CAD-Based Geometry for Monte Carlo Radiation Transport," in
        *IEEE Computing in Science and Engineering*, vol. 24, no. 2, pp. 52-61,
        February 2022, doi: 10.1109/MCSE.2022.3154656.
+
+GPU Accelerated Ray Tracing
+==============================
+
+Ray tracing as a technique is highly parallelizable and has been extensively optimized
+for GPU architectures in the context of graphics rendering. As a result there exists 
+a rich ecosystem of GPU-accelerated software and even hardware support for ray tracing
+operations. But historically these capabilities are focused around single precision 
+support and as such have not typically been adopted in the scientfic computing community.
+
+For GPUs, a few different libraries are currently being explored with the goal of 
+eventually supporting complete feature parity between CPU and GPU backends of XDG, 
+with an explicit focus on vendor agnostic GPU support. The current libraries in question include:
+
+- :term:`GPRT` (General Purpose Ray Tracing Toolkit) - A vulkan based GPU only
+  ray tracing library that is vendor agnostic being built around the Vulkan API.
+
+- :term:`DPRT` (Double Precision Ray Tracing Toolkit) - A "basics-only" ray
+  tracing library built specifically for double precision ray tracing. Historically
+  targeting only NVIDIA platforms via CUDA an experimental OpenMP target offload backend
+  is also currently in development for vendor agnostic GPU support.

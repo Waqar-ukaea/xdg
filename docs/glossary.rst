@@ -52,7 +52,12 @@ Glossary
         variable.
 
     `GPRT <https://github.com/gprt-org/GPRT>`_
-        General Purpose Raytracing Toolkit
+        General Purpose Raytracing Toolkit - A vulkan based GPU accelerated ray tracing
+        library capable of both GPU software and hardware accelerated ray tracing.
+    
+    `DPRT <https://github.com/NVIDIA/deepeeRT>`_
+        DeePeeRT (Double Precision Ray Tracing Toolkit) - A "Basics-only" Ray Tracing Library 
+        intended specifically for Double-Precision Ray Tracing being developed by NVIDIA.
 
     XDG
         Accelerated Discretized Geometry
