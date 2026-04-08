@@ -3,10 +3,20 @@
 XDG Design Philosophy
 =====================
 
-The design of XDG has been largely influenced by the history of DAGMC's design.
+The design of XDG has been largely influenced by the history of DAGMC's design
+and the places where it was found to be less flexible and extensible as the 
+library evolved. The XDG architecture diagram below shows how those 
+responsibilities are organized in the modern library:
+
+.. figure:: ../assets/xdg_architecture.png
+   :alt: XDG architecture diagram
+   :align: center
+   :width: 100%
+
+   High-level XDG design architecture diagram
 
 
-The primary design goals of XDG are centered on the following:
+The primary design goals of XDG are centered on the following core ideas:
 
 - **Mesh Library Abstraction**: all mesh-based operations in XDG are
   abstracted through a common interface, the ``MeshManagerInterface``. This
@@ -29,3 +39,16 @@ The primary design goals of XDG are centered on the following:
   core XDG codebase. This is important for one of XDG's primary goals: to
   support ray tracing on both CPUs and GPUs in a single binary.
 
+For historical context, DAGMC's design and its interaction with the subsequent
+:term:`double-down` extension help explain why XDG adopts these abstractions.
+That earlier design was more tightly coupled to :term:`MOAB`, and the ray tracing
+path through :term:`double-down` was less extensible being a direct interface only
+to the :term:`Embree` ray tracing kernels. The older DAGMC/double-down layout is 
+also shown below for comparison:
+
+.. figure:: ../assets/dagmc_architecture_split.png
+   :alt: Historical DAGMC architecture diagram
+   :align: center
+   :width: 100%
+
+   Historical DAGMC design architecture with the double-down ray tracing extension
