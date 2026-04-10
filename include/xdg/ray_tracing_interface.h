@@ -10,8 +10,11 @@
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/primitive_ref.h"
 #include "xdg/geometry_data.h"
-#include <dprt/dprt.h>
 
+// TODO - Make it so we don't pass DPRT types at this level 
+#ifdef XDG_ENABLE_DPRT
+  #include <dprt/dprt.h>
+#endif
 namespace xdg
 {
 
@@ -87,11 +90,12 @@ public:
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) = 0;
 
+#ifdef XDG_ENABLE_DPRT
   virtual void batch_ray_fire(TreeID tree, DPRTRay* d_rays, DPRTHit* d_hits, size_t num_rays)
   {
     fatal_error("GPU ray tracing not supported with this RayTracer backend");
   }
-
+#endif
   /**
    * @brief Finds the element containing a given point using the global element tree.
    *

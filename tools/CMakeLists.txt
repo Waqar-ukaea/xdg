@@ -6,8 +6,11 @@ point_in_volume
 overlap_check
 walk_elements
 tally_segments
-dpr_test
 )
+
+if (XDG_ENABLE_DPRT)
+    list(APPEND TOOL_NAMES dpr_test)
+endif()
 
 #===============================================================================
 # OpenMP -- use if availabable
