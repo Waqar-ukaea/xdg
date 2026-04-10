@@ -464,10 +464,7 @@ MeshID GPRTRayTracer::find_element(TreeID tree, const Position& point) const
   auto primitive_id = hit[0].primitive_id;
   gprtBufferUnmap(rayHitBuffers_.hit); // required to sync buffer back on GPU? Maybe this second unmap isn't actually needed since we dont need to resyncrhonize after retrieving the data from device
   
-  if (primitive_id == -1)
-    return ID_NONE;
-  else
-    return primitive_id;
+  return primitive_id;
 }
 
 } // namespace xdg

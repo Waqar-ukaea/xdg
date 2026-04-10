@@ -123,7 +123,7 @@ class GPRTRayTracer : public RayTracer {
     GPRTGeomTypeOf<DPTetrahedronGeomData> tetrahedraGeomType_; //<! Geometry type for tetrahedra (not currently supported)
 
     // Ray Generation parameters
-    uint32_t numRayTypes_ = 2; // <! Number of ray types. 0=surface, 1=volume
+    uint32_t numRayTypes_ = RT_NUM_RAY_TYPES; // <! Number of ray types. 0=surface, 1=volume
     
     // Mesh-to-Scene maps 
     std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry

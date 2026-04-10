@@ -17,9 +17,6 @@ void ray_fire_hit(uniform DPTriangleGeomData record, inout SurfaceRayFirePayload
     uint hit_kind = HitKind();
     uint rayID = DispatchRaysIndex().x;
 
-    // There is some logic for handling next volumes inside the h5m-reader which I could make use of too
-    // TODO : Should the dblHit struct return the next volume ID for the ray back to the host
-
     payload.piv = (hit_kind == HIT_KIND_TRIANGLE_FRONT_FACE) 
     ? xdg::PointInVolume::OUTSIDE
     : xdg::PointInVolume::INSIDE; 
@@ -35,8 +32,8 @@ void ray_fire_hit(uniform DPTriangleGeomData record, inout SurfaceRayFirePayload
 void ray_fire_miss(inout SurfaceRayFirePayload payload) {
     // Set the miss payload to default values
     payload.distance = -1.0f;
-    payload.surf_id = -1;
-    payload.primitive_id = -1;
+    payload.surf_id = xdg::ID_NONE;
+    payload.primitive_id = xdg::ID_NONE;
     payload.piv = xdg::PointInVolume::UNSET;
 }
 
@@ -58,7 +55,7 @@ void ray_fire(uniform dblRayGenData record) {
 
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
-    payload.surf_id = -1;
+    payload.surf_id = xdg::ID_NONE;
     payload.tlas = world;
 
     TraceRay(world, RAY_FLAG_NONE, 0xff, xdg::RT_SURFACE_RAY_INDEX, xdg::RT_SURFACE_MISS_INDEX, rayDesc, payload);
@@ -84,7 +81,7 @@ void point_in_volume(uniform dblRayGenData record) {
     SurfaceAccelerationStructure world = record.ray[rayID].volume_accel_surf;
 
     // Pass the ray's origin and direction to the payload
-    payload.surf_id = -1;
+    payload.surf_id = xdg::ID_NONE;
     payload.tlas = world;
     payload.piv = xdg::PointInVolume::OUTSIDE; // Initialize point in volume check result to outside (0)
     
@@ -108,7 +105,7 @@ populate_tri_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriang
 
 // ------------------------------------------------ CUSTOM INTERSECTION SHADERS ------------------------------------------------
 
-/* 1D ray generation intersection with a double precision triangle using the Plucker intersection algorithm*/
+// Custom FP64 Plucker ray-triangle intersection algorithm for each ray-triangle pair
 [shader("intersection")]
 void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
 {

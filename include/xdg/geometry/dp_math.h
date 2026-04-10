@@ -16,7 +16,7 @@ namespace dp {
 
   static const double DBL_EPS = 2.2204460492503131e-016;
   static const double PLUCKER_ZERO_TOL = 20.0 * DBL_EPS;
-  static const double INFTY = 1.7976931348623157e+308; // std::numeric_limits<double>::max() is not available in slang
+  static const double INFTY = 1.7976931348623157e+308;
 
   inline double dot(vec3 a, vec3 b) { return ::dot(a, b); }
   inline vec3 cross(vec3 a, vec3 b) { return ::cross(a, b); }

@@ -43,8 +43,9 @@ inline void populate_aabb(uint primID, double3 *vertex, float3 *aabb, uint indic
 
 bool orientation_cull(in double3 ray, in double3 normal, in xdg::HitOrientation orientation) {
     if (orientation == xdg::HitOrientation::ANY) return false; // No culling
-    if (orientation == xdg::HitOrientation::EXITING) return dot(ray, normal) < 0.0; // Cull exiting rays
-    if (orientation == xdg::HitOrientation::ENTERING) return dot(ray, normal) > 0.0; // Cull entering rays
+    double dot_product = dot(ray, normal);
+    if (orientation == xdg::HitOrientation::EXITING) return dot_product < 0.0; // Cull exiting rays
+    if (orientation == xdg::HitOrientation::ENTERING) return dot_product > 0.0; // Cull entering rays
     return false;                      // Default case, no culling
 }
 

@@ -154,7 +154,7 @@ src/gprt/triangle_rt_shaders.slang
 src/gprt/tetrahedron_rt_shaders.slang
 include/xdg/gprt/shared_structs.h
 include/xdg/gprt/rt_common.slangh
-include/xdg/shared_enums.h
+include/xdg/shared_constants.h
 include/xdg/geometry/dp_math.h
 )
 endif()

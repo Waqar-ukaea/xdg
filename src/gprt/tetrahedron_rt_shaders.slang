@@ -4,7 +4,7 @@
 #include "../../include/xdg/gprt/rt_common.slangh"
 
 struct SolidRayFirePayload {
-    int primitiveid; // ID of the primitive the point is contained within
+    int primitive_id; // ID of the primitive the point is contained within
 };
 
 
@@ -31,22 +31,22 @@ void find_element(uniform dblRayGenData record) {
     SolidAccelerationStructure world = record.ray[rayID].volume_accel_solid;
 
     // Pass the ray's origin and direction to the payload
-    payload.primitiveid = -1; // Initialize to -1 to indicate the point is
+    payload.primitive_id = xdg::ID_NONE; // Initialize to ID_NONE to indicate the point is outside all elements
 
     TracePoint(world, RAY_FLAG_NONE, 0xff, xdg::RT_VOLUME_RAY_INDEX, xdg::RT_VOLUME_MISS_INDEX, pointDesc, payload);
 
     // Store the ID of the containing element in the hit buffer for CPU readback
-    record.hit[rayID].primitive_id = payload.primitiveid; // we're reusing dblHit's primitive_id field to store the ID of the containing element since we don't need hit distance or surf_id for this shader
+    record.hit[rayID].primitive_id = payload.primitive_id; // we're reusing dblHit's primitive_id field to store the ID of the containing element since we don't need hit distance or surf_id for this shader
 }
 
 [shader("miss")]
 void tet_miss(inout SolidRayFirePayload payload) {
-    payload.primitiveid = -1; // Mark the ray as outside all tetrahedra
+    payload.primitive_id = xdg::ID_NONE; // Mark the ray as outside all tetrahedra
 }
 
 [shader("closesthit")]
 void tet_contain_hit(uniform DPTetrahedronGeomData record, inout SolidRayFirePayload payload, in DPAttribute attr) {
-    payload.primitiveid = attr.global_prim_id; // Store the ID of the tet that contains the point
+    payload.primitive_id = attr.global_prim_id; // Store the ID of the tet that contains the point
 }
 
 
