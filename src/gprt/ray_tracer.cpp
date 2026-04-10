@@ -106,84 +106,95 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
+  auto bump = bounding_box_bump(mesh_manager, volume_id);
   std::vector<gprt::Instance> surfaceBlasInstances; // BLAS for each (surface) geometry in this volume
 
   for (const auto &surf : volume_surfaces) {
-    auto num_faces = mesh_manager->num_surface_faces(surf);
-
-    // get the sense of this surface with respect to the volume
-    Sense triangle_sense {Sense::UNSET};
-    auto surf_to_vol_senses = mesh_manager->get_parent_volumes(surf);
-    if (volume_id == surf_to_vol_senses.first) triangle_sense = Sense::FORWARD;
-    else if (volume_id == surf_to_vol_senses.second) triangle_sense = Sense::REVERSE;
-    
+    GPRTGeomOf<DPTriangleGeomData> triangleGeom;
+    GPRTAccel blas;
     DPTriangleGeomData* geom_data = nullptr;
-    auto triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
-    geom_data = gprtGeomGetParameters(triangleGeom); // pointer to assign data to
+    bool created_surface = false;
 
-    // Get storage for vertices
-    auto vertices = mesh_manager->get_surface_vertices(surf);
-    auto indices = mesh_manager->get_surface_connectivity(surf);
-    std::vector<double3> dbl3Vertices;
-    dbl3Vertices.reserve(vertices.size());    
-    for (const auto &vertex : vertices) {
-      dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+    if (!surface_to_geometry_map_.count(surf)) {
+      created_surface = true;
+      auto num_faces = mesh_manager->num_surface_faces(surf);
+      triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
+      geom_data = gprtGeomGetParameters(triangleGeom); // pointer to assign data to
+
+      // Get storage for vertices
+      auto vertices = mesh_manager->get_surface_vertices(surf);
+      auto indices = mesh_manager->get_surface_connectivity(surf);
+      std::vector<double3> dbl3Vertices;
+      dbl3Vertices.reserve(vertices.size());
+      for (const auto &vertex : vertices) {
+        dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+      }
+
+      // Get storage for indices
+      std::vector<uint3> ui3Indices;
+      ui3Indices.reserve(indices.size() / 3);
+      for (size_t i = 0; i < indices.size(); i += 3) {
+        ui3Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+      }
+
+      // Get storage for normals
+      std::vector<double3> normals;
+      std::vector<GPRTPrimitiveRef> primitive_refs;
+      primitive_refs.reserve(num_faces);
+      normals.reserve(num_faces);
+      for (const auto &face : mesh_manager->get_surface_faces(surf)) {
+        auto norm = mesh_manager->face_normal(face);
+        normals.push_back({norm.x, norm.y, norm.z});
+        GPRTPrimitiveRef prim_ref;
+        prim_ref.id = face;
+        primitive_refs.push_back(prim_ref);
+      }
+
+      auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
+      auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
+      gprtAABBsSetPositions(triangleGeom, aabb_buffer, num_faces, 2*sizeof(float3), 0);
+      auto connectivity_buffer = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
+      auto normal_buffer = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data()); 
+      auto primitive_refs_buffer = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, num_faces, primitive_refs.data()); // Buffer for primitive sense
+
+      geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
+      geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
+      geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
+      geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
+      geom_data->surf_id = surf;
+      geom_data->normals = gprtBufferGetDevicePointer(normal_buffer);
+      geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
+      geom_data->num_faces = num_faces;
+      geom_data->bounding_box_bump = bump;
+
+      gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
+      gprtComputeSynchronize(context_);
+
+      blas = gprtAABBAccelCreate(context_, triangleGeom, buildParams_.buildMode);
+      gprtAccelBuild(context_, blas, buildParams_);
+
+      surface_to_geometry_map_[surf] = triangleGeom;
+      surface_to_blas_map_[surf] = blas;
+      blas_handles_.push_back(blas);
+    } else {
+      triangleGeom = surface_to_geometry_map_.at(surf);
+      blas = surface_to_blas_map_.at(surf);
+      geom_data = gprtGeomGetParameters(triangleGeom);
+
+      if (bump > geom_data->bounding_box_bump) {
+        geom_data->bounding_box_bump = bump;
+        gprtComputeLaunch(aabbPopulationProgram_, {geom_data->num_faces, 1, 1}, {1, 1, 1}, *geom_data);
+        gprtComputeSynchronize(context_);
+        gprtAccelBuild(context_, blas, buildParams_);
+      }
     }
 
-    // Get storage for indices
-    std::vector<uint3> ui3Indices;
-    ui3Indices.reserve(indices.size() / 3);
-    for (size_t i = 0; i < indices.size(); i += 3) {
-      ui3Indices.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
-    }
-
-    // Get storage for normals
-    std::vector<double3> normals;
-    std::vector<GPRTPrimitiveRef> primitive_refs;
-    primitive_refs.reserve(num_faces);
-    normals.reserve(num_faces);
-    for (const auto &face : mesh_manager->get_surface_faces(surf)) {
-      auto norm = mesh_manager->face_normal(face);
-      normals.push_back({norm.x, norm.y, norm.z});
-      GPRTPrimitiveRef prim_ref;
-      prim_ref.id = face;
-      primitive_refs.push_back(prim_ref);
-    }
-
-    auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
-    auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
-    gprtAABBsSetPositions(triangleGeom, aabb_buffer, num_faces, 2*sizeof(float3), 0);
-    auto connectivity_buffer = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
-    auto normal_buffer = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data()); 
-    auto primitive_refs_buffer = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, num_faces, primitive_refs.data()); // Buffer for primitive sense
-
-    geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
-    geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
-    geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
-    geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
-    geom_data->surf_id = surf;
-    geom_data->normals = gprtBufferGetDevicePointer(normal_buffer);
-    geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
-    geom_data->num_faces = num_faces;
-    
-    gprtComputeLaunch(aabbPopulationProgram_, {num_faces, 1, 1}, {1, 1, 1}, *geom_data);
-
-    GPRTAccel blas = gprtAABBAccelCreate(context_, triangleGeom, buildParams_.buildMode);
-
-    gprtAccelBuild(context_, blas, buildParams_);
-
-    gprt::Instance instance;
-    instance = gprtAccelGetInstance(blas); // create instance of BLAS to be added to TLAS
+    gprt::Instance instance = gprtAccelGetInstance(blas);
     instance.mask = 0xff; // mask can be used to filter instances during ray traversal. 0xff ensures no filtering
-
-    // Store in maps
-    surface_to_geometry_map_[surf] = triangleGeom;
-
-    geom_data = gprtGeomGetParameters(triangleGeom);
-    instance = gprtAccelGetInstance(blas);
-    instance.mask = 0xff;
     surfaceBlasInstances.push_back(instance);
-    globalBlasInstances_.push_back(instance);
+    if (created_surface) {
+      globalBlasInstances_.push_back(instance);
+    }
     
     // Always update per-volume info
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);

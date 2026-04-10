@@ -130,6 +130,7 @@ class GPRTRayTracer : public RayTracer {
     
     // Mesh-to-Scene maps 
     std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to embree geometry
+    std::map<MeshID, GPRTAccel> surface_to_blas_map_; //<! Map from mesh surface to GPRT BLAS
 
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
