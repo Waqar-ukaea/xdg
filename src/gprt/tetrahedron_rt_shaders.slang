@@ -31,7 +31,7 @@ void find_element(uniform dblRayGenData record) {
     SolidAccelerationStructure world = record.ray[rayID].volume_accel_solid;
 
     // Pass the ray's origin and direction to the payload
-    payload.primitive_id = xdg::ID_NONE; // Initialize to ID_NONE to indicate the point is outside all elements
+    payload.primitive_id = ID_NONE; // Initialize to -1 to indicate the point is
 
     TracePoint(world, RAY_FLAG_NONE, 0xff, xdg::RT_VOLUME_RAY_INDEX, xdg::RT_VOLUME_MISS_INDEX, pointDesc, payload);
 
@@ -41,7 +41,7 @@ void find_element(uniform dblRayGenData record) {
 
 [shader("miss")]
 void tet_miss(inout SolidRayFirePayload payload) {
-    payload.primitive_id = xdg::ID_NONE; // Mark the ray as outside all tetrahedra
+    payload.primitive_id = ID_NONE; // Mark the ray as outside all tetrahedra
 }
 
 [shader("closesthit")]

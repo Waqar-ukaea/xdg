@@ -1,5 +1,5 @@
 #include "gprt.h"
-#include "../shared_constants.h"
+#include "../shared_enums.h"
 #include "../geometry/dp_math.h"
 
 

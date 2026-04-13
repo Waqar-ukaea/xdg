@@ -8,7 +8,7 @@
 
 #include "fmt/format.h"
 
-#include "xdg/shared_constants.h"
+#include "xdg/shared_enums.h"
 
 namespace xdg {
 
@@ -69,6 +69,22 @@ static const std::map<RTLibrary, std::string> RT_LIB_TO_STR =
   {RTLibrary::EMBREE, "EMBREE"},
   {RTLibrary::GPRT, "GPRT"}
 };
+
+// Mesh identifer type
+using MeshID = int32_t;
+using MeshIndex  = int32_t;
+
+// Null mesh ID
+constexpr MeshID ID_NONE {-1};
+constexpr MeshIndex INDEX_NONE {-1};
+
+// Scene/Tree ID
+using TreeID = int32_t;
+using SurfaceTreeID = TreeID;
+using ElementTreeID = TreeID;
+
+// Null tree ID
+constexpr TreeID TREE_NONE {-1};
 
 // for abs(x) >= min_rcp_input the newton raphson rcp calculation does not fail
 constexpr float min_rcp_input = std::numeric_limits<float>::min() /* FIX ME */ *1E5 /* SHOULDNT NEED TO MULTIPLY BY THIS VALUE */;

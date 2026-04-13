@@ -9,6 +9,7 @@
 [[vk::push_constant]]
 dblRayFirePushConstants PC;
 
+static const int32_t ID_NONE = -1; // slang copy of the C++ constant for invalid IDs
 struct DPAttribute
 {
   double f64t; // double precision hit distance
