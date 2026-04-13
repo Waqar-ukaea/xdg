@@ -3,10 +3,10 @@
 XDG Design Philosophy
 =====================
 
-The design of XDG has been largely influenced by the history of DAGMC's design
-and the places where it was found to be less flexible and extensible as the 
-library evolved. The XDG architecture diagram below shows how those 
-responsibilities are organized in the modern library:
+The design of XDG has been largely influenced by the history of DAGMC's design. 
+XDG's design builds upon the success of DAGMC with an extensible design for multiple 
+ray tracers and mesh libraries. The XDG architecture diagram below shows how those 
+responsibilities are organized:
 
 .. figure:: ../assets/xdg_architecture.png
    :alt: XDG architecture diagram

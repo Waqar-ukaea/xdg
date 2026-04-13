@@ -52,7 +52,3 @@ with an explicit focus on vendor agnostic GPU support. The current libraries in 
 - :term:`GPRT` (General Purpose Ray Tracing Toolkit) - A vulkan based GPU only
   ray tracing library that is vendor agnostic being built around the Vulkan API.
 
-- :term:`DPRT` (Double Precision Ray Tracing Toolkit) - A "basics-only" ray
-  tracing library built specifically for double precision ray tracing. Historically
-  targeting only NVIDIA platforms via CUDA an experimental OpenMP target offload backend
-  is also currently in development for vendor agnostic GPU support.

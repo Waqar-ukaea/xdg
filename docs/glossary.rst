@@ -9,8 +9,8 @@ Glossary
     AS
         (Ray tracing) Acceleration Structure
         A data structure that is used to accelerate ray tracing operations by
-        organizing the geometry in a way that allows for efficient traversal and
-        intersection testing.
+        partitioning geometric primitives (i.e. faces/elements) in a way that 
+        allows for efficient traversal and intersection testing.
 
     BVH
         Bounding Volume hierarchy
