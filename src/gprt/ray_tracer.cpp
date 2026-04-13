@@ -46,6 +46,10 @@ GPRTRayTracer::~GPRTRayTracer()
     gprtAccelDestroy(accel);
   }
 
+  for (const auto& [tree, instance_buffer] : surface_tree_to_instance_buffer_map_) {
+    gprtBufferDestroy(instance_buffer);
+  }
+
   // Destroy BLAS structures
   for (const auto& blas : blas_handles_) {
     gprtAccelDestroy(blas);
@@ -58,6 +62,13 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtGeomTypeDestroy(trianglesGeomType_);
 
   // Destroy Buffers
+  for (const auto& [surf, buffers] : surface_buffers_map_) {
+    gprtBufferDestroy(buffers.vertices);
+    gprtBufferDestroy(buffers.aabbs);
+    gprtBufferDestroy(buffers.connectivity);
+    gprtBufferDestroy(buffers.normals);
+    gprtBufferDestroy(buffers.primitive_refs);
+  }
   gprtBufferDestroy(rayHitBuffers_.ray);
   gprtBufferDestroy(rayHitBuffers_.hit);
   gprtBufferDestroy(excludePrimitivesBuffer_);
@@ -116,6 +127,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     bool created_surface = false;
 
     if (!surface_to_geometry_map_.count(surf)) {
+      std::cout << "Creating geometry for surface " << surf << " in volume " << volume_id << std::endl;
       created_surface = true;
       auto num_faces = mesh_manager->num_surface_faces(surf);
       triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
@@ -150,20 +162,21 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
         primitive_refs.push_back(prim_ref);
       }
 
-      auto vertex_buffer = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
-      auto aabb_buffer = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
-      gprtAABBsSetPositions(triangleGeom, aabb_buffer, num_faces, 2*sizeof(float3), 0);
-      auto connectivity_buffer = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
-      auto normal_buffer = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data()); 
-      auto primitive_refs_buffer = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, num_faces, primitive_refs.data()); // Buffer for primitive sense
+      GPRTSurfaceBuffers surface_buffers;
+      surface_buffers.vertices = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
+      surface_buffers.aabbs = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
+      gprtAABBsSetPositions(triangleGeom, surface_buffers.aabbs, num_faces, 2*sizeof(float3), 0);
+      surface_buffers.connectivity = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
+      surface_buffers.normals = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data()); 
+      surface_buffers.primitive_refs = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, num_faces, primitive_refs.data()); // Buffer for primitive sense
 
-      geom_data->vertex = gprtBufferGetDevicePointer(vertex_buffer);
-      geom_data->index = gprtBufferGetDevicePointer(connectivity_buffer);
-      geom_data->aabbs = gprtBufferGetDevicePointer(aabb_buffer);
+      geom_data->vertex = gprtBufferGetDevicePointer(surface_buffers.vertices);
+      geom_data->index = gprtBufferGetDevicePointer(surface_buffers.connectivity);
+      geom_data->aabbs = gprtBufferGetDevicePointer(surface_buffers.aabbs);
       geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
       geom_data->surf_id = surf;
-      geom_data->normals = gprtBufferGetDevicePointer(normal_buffer);
-      geom_data->primitive_refs = gprtBufferGetDevicePointer(primitive_refs_buffer);
+      geom_data->normals = gprtBufferGetDevicePointer(surface_buffers.normals);
+      geom_data->primitive_refs = gprtBufferGetDevicePointer(surface_buffers.primitive_refs);
       geom_data->num_faces = num_faces;
       geom_data->bounding_box_bump = bump;
 
@@ -175,8 +188,11 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
 
       surface_to_geometry_map_[surf] = triangleGeom;
       surface_to_blas_map_[surf] = blas;
+      surface_buffers_map_[surf] = surface_buffers;
       blas_handles_.push_back(blas);
-    } else {
+    } 
+    else {
+      std::cout << "Reusing existing geometry for surface " << surf << " in volume " << volume_id << std::endl;
       triangleGeom = surface_to_geometry_map_.at(surf);
       blas = surface_to_blas_map_.at(surf);
       geom_data = gprtGeomGetParameters(triangleGeom);
@@ -214,6 +230,7 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   GPRTAccel volume_tlas = gprtInstanceAccelCreate(context_, surfaceBlasInstances.size(), instanceBuffer);
   gprtAccelBuild(context_, volume_tlas, buildParams_);
   surface_volume_tree_to_accel_map[tree] = volume_tlas;
+  surface_tree_to_instance_buffer_map_[tree] = instanceBuffer;
   
   return tree;
 }
@@ -349,6 +366,7 @@ void GPRTRayTracer::create_global_surface_tree()
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   surface_volume_tree_to_accel_map[tree] = global_accel;  
+  surface_tree_to_instance_buffer_map_[tree] = globalBuffer;
   global_surface_tree_ = tree;
   global_surface_accel_ = global_accel; 
 }
