@@ -41,14 +41,16 @@ GPU Accelerated Ray Tracing
 
 Ray tracing as a technique is highly parallelizable and has been extensively optimized
 for GPU architectures in the context of graphics rendering. As a result there exists 
-a rich ecosystem of GPU-accelerated software and even hardware support for ray tracing
-operations. But historically these capabilities are focused around single precision 
-support and as such have not typically been adopted in the scientfic computing community.
+a rich ecosystem of GPU-accelerated software and even hardware support (see :term:`RT 
+hardware acceleration`) for ray tracing operations. But historically these capabilities 
+are focused around single precision support and as such have not typically been adopted 
+in the scientfic computing community.
 
-For GPUs, a few different libraries are currently being explored with the goal of 
-eventually supporting complete feature parity between CPU and GPU backends of XDG, 
-with an explicit focus on vendor agnostic GPU support. The current libraries in question include:
-
-- :term:`GPRT` (General Purpose Ray Tracing Toolkit) - A vulkan based GPU only
-  ray tracing library that is vendor agnostic being built around the Vulkan API.
-
+XDG is intended to support GPU acceleration and provide an interface for leveraging GPU 
+accelated ray tracing in scientific computing applications. An explicit focus is being 
+placed on vendor agnostic GPU support to ensure that XDG can be used across a wide range of
+hardware platforms. Currently, intial scoping of the GPU API is underway with work being done
+to support the :term:`GPRT` (General Purpose Ray Tracing Toolkit) - A vulkan based GPU only
+ray tracing library that is vendor agnostic being built around the Vulkan API. Other GPU
+ray tracing libraries will also be explored in the future, with the eventual goal of providing 
+complete feature parity between CPU and GPU backends of XDG. 
