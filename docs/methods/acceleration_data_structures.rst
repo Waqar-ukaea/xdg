@@ -35,11 +35,8 @@ A :term:`BLAS` is the lower-level acceleration structure built over the
 primitives of one piece of geometry. In practice, this is commonly a BVH:
 leaf nodes reference primitives, while internal nodes store AABBs that enclose
 their child nodes. Traversal starts at the root of the tree and only descends
-into child boxes that the ray intersects.
-
-For XDG surface tracking, a BLAS-like structure is a natural representation for
-one surface's triangles. For volume tracking, the same idea can be applied to
-the volumetric elements inside a volume.
+into child boxes that the ray intersects. The diagram below shows a simple BLAS
+with AABBs at each node and triangles at the leaves:
 
 .. figure:: ../assets/BLAS.png
    :alt: Bottom-level acceleration structure diagram
@@ -64,16 +61,72 @@ BLASes to test against individual primitives.
 
    Khronos illustration of a TLAS over lower-level BLAS instances.
 
-This AABB-to-BLAS-to-TLAS structure maps onto XDG geometry as follows:
+Backend Terminology Mapping
+---------------------------
 
-- In :term:`surface tracking`, each surface is represented by a BLAS-like
-  structure over its triangles. Each volume is represented by a TLAS-like scene
-  over the BLAS instances for its boundary surfaces. This lets the ray tracer
-  reject entire boundary surfaces before testing individual triangles.
-- In :term:`volume tracking`, each volume is represented by an acceleration
-  structure over that volume's volumetric elements. Backends that expose
-  two-level scenes can represent this as a TLAS-like scene containing a
-  BLAS-like geometry over the elements.
+The BLAS/TLAS terminology is useful for describing the common two-level
+acceleration structure pattern, but XDG does not require every backend to expose
+objects with those exact names. In Embree, the exposed objects are
+``RTCGeometry`` and ``RTCScene``; Embree builds the concrete acceleration
+structures internally when those objects are committed. Because the current
+Embree backend does not use Embree instance geometries, its mapping should be
+read as BLAS-like and TLAS-like rather than as explicit BLAS/TLAS objects. GPRT
+maps more directly onto the BLAS/TLAS terminology.
+
+For :term:`surface tracking`, XDG traces against the boundary surfaces of a
+topological volume where each surface has its own BLAS-like structure:
+
+.. list-table:: Surface tracking acceleration structure mapping
+   :header-rows: 1
+   :widths: 24 38 38
+
+   * - Concept
+     - Embree
+     - GPRT
+   * - **Top level**
+     - TLAS-like object in ``RTCScene``
+     - TLAS ``GPRTAccel`` created with ``gprtInstanceAccelCreate``
+   * - **Bottom level**
+     - BLAS-like object in ``RTCGeometry`` with user triangle primitives
+     - BLAS ``GPRTAccel`` created with ``gprtAABBAccelCreate`` for a
+       ``GPRTGeom``
+   * - **Instance**
+     - Not used currently; geometries are attached directly to scenes
+     - ``gprt::Instance`` created from the surface BLAS
+   * - **Topological volume**
+     - Per-volume ``RTCScene`` containing the boundary-surface geometries
+     - TLAS over the BLAS instances for the volume's boundary surfaces
+   * - **Topological surface**
+     - Cached ``RTCGeometry`` over the surface's triangle faces
+     - ``GPRTGeom`` and BLAS over the surface's triangle faces
+
+For :term:`volume tracking`, XDG traces against the volumetric elements inside a
+topological volume where each volume has exactly one BLAS-like structure containing 
+all of its elements. The more explicit BLAS/TLAS terminology is less applicable in this 
+case, but the mapping is shown below for completeness:
+
+.. list-table:: Volume tracking acceleration structure mapping
+   :header-rows: 1
+   :widths: 24 38 38
+
+   * - Concept
+     - Embree
+     - GPRT
+   * - **Top level**
+     - TLAS-like object in ``RTCScene`` for the volume's element tree
+     - Not implemented currently
+   * - **Bottom level**
+     - BLAS-like object in ``RTCGeometry`` with user volumetric-element primitives
+     - Not implemented currently
+   * - **Instance**
+     - Not used currently
+     - Not implemented currently
+   * - **Topological volume**
+     - Per-volume ``RTCScene`` containing the volume-element geometry
+     - Planned analog would be an acceleration structure over volume elements
+   * - **Topological surface**
+     - Not the traversal object; intersections are with volumetric elements
+     - Not used for element traversal
 
 Mixed Precision Ray Tracing
 ===========================
