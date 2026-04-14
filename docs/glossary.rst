@@ -12,6 +12,12 @@ Glossary
         partitioning geometric primitives (i.e. faces/elements) in a way that 
         allows for efficient traversal and intersection testing.
 
+    BLAS
+        Bottom-Level Acceleration Structure. A lower-level acceleration
+        structure, commonly a BVH, built over mesh primitives such as triangles.
+        In a two-level ray tracing acceleration structure, BLAS instances are
+        referenced by a :term:`TLAS`.
+
     BVH
         Bounding Volume hierarchy
 
@@ -89,6 +95,11 @@ Glossary
         A named data field that can be associated with entities in MOAB. Each
         tag has an immutable data type. The size of the data can be fixed or
         variable.
+
+    TLAS
+        Top-Level Acceleration Structure. A higher-level acceleration structure
+        built over one or more :term:`BLAS` instances. A TLAS is used to cull
+        larger groups of geometry before traversing the lower-level structures.
 
     XDG
         Accelerated Discretized Geometry
