@@ -61,6 +61,49 @@ BLASes to test against individual primitives.
 
    Khronos illustration of a TLAS over lower-level BLAS instances.
 
+Mixed Precision Ray Tracing
+===========================
+
+The paper "Hardware-Accelerated Ray Tracing of CAD-Based Geometry for Monte
+Carlo Radiation Transport" discusses the use of mixed-precision algorithms
+to efficiently handle complex CAD-based geometries in Monte Carlo radiation
+transport simulations. The key contributions of the paper include leveraging
+modern ray tracing kernels to significantly speed up the ray tracing process,
+which is critical for handling the high computational demands of Monte Carlo
+methods [1]_.
+
+By integrating the techniques discussed in the paper, XDG achieves
+faster BVH construction and traversal, leading to more efficient simulations.
+This is particularly beneficial for applications involving complex geometries
+and large-scale simulations, where traditional CPU-based methods may fall short
+in terms of performance.
+
+.. [1] P. Shriwise, P. Wilson, A. Davis, P. Romano, "Hardware-Accelerated Ray
+       Tracing of CAD-Based Geometry for Monte Carlo Radiation Transport," in
+       *IEEE Computing in Science and Engineering*, vol. 24, no. 2, pp. 52-61,
+       February 2022, doi: 10.1109/MCSE.2022.3154656.
+
+GPU-Accelerated Ray Tracing
+===========================
+
+Ray tracing as a technique is highly parallelizable and has been extensively
+optimized for GPU architectures in the context of graphics rendering. As a
+result, there is a rich ecosystem of GPU-accelerated software and even
+hardware support (see :term:`RT hardware acceleration`) for ray tracing
+operations. Historically, these capabilities have focused on single-precision
+support and have not typically been adopted in the scientific computing
+community.
+
+XDG is intended to support GPU acceleration and provide an interface for
+leveraging GPU-accelerated ray tracing in scientific computing applications.
+An explicit focus is being placed on vendor-agnostic GPU support to ensure that
+XDG can be used across a wide range of hardware platforms. Currently, initial
+scoping of the GPU API is underway with work being done to support :term:`GPRT`
+(General Purpose Ray Tracing Toolkit), a Vulkan-based GPU-only ray tracing
+library that is vendor-agnostic and built around the Vulkan API. Other GPU ray
+tracing libraries will also be explored in the future, with the eventual goal of
+providing complete feature parity between CPU and GPU backends of XDG.
+
 Backend Terminology Mapping
 ---------------------------
 
@@ -127,46 +170,3 @@ case, but the mapping is shown below for completeness:
    * - **Topological surface**
      - Not the traversal object; intersections are with volumetric elements
      - Not used for element traversal
-
-Mixed Precision Ray Tracing
-===========================
-
-The paper "Hardware-Accelerated Ray Tracing of CAD-Based Geometry for Monte
-Carlo Radiation Transport" discusses the use of mixed-precision algorithms
-to efficiently handle complex CAD-based geometries in Monte Carlo radiation
-transport simulations. The key contributions of the paper include leveraging
-modern ray tracing kernels to significantly speed up the ray tracing process,
-which is critical for handling the high computational demands of Monte Carlo
-methods [1]_.
-
-By integrating the techniques discussed in the paper, XDG achieves
-faster BVH construction and traversal, leading to more efficient simulations.
-This is particularly beneficial for applications involving complex geometries
-and large-scale simulations, where traditional CPU-based methods may fall short
-in terms of performance.
-
-.. [1] P. Shriwise, P. Wilson, A. Davis, P. Romano, "Hardware-Accelerated Ray
-       Tracing of CAD-Based Geometry for Monte Carlo Radiation Transport," in
-       *IEEE Computing in Science and Engineering*, vol. 24, no. 2, pp. 52-61,
-       February 2022, doi: 10.1109/MCSE.2022.3154656.
-
-GPU-Accelerated Ray Tracing
-===========================
-
-Ray tracing as a technique is highly parallelizable and has been extensively
-optimized for GPU architectures in the context of graphics rendering. As a
-result, there is a rich ecosystem of GPU-accelerated software and even
-hardware support (see :term:`RT hardware acceleration`) for ray tracing
-operations. Historically, these capabilities have focused on single-precision
-support and have not typically been adopted in the scientific computing
-community.
-
-XDG is intended to support GPU acceleration and provide an interface for
-leveraging GPU-accelerated ray tracing in scientific computing applications.
-An explicit focus is being placed on vendor-agnostic GPU support to ensure that
-XDG can be used across a wide range of hardware platforms. Currently, initial
-scoping of the GPU API is underway with work being done to support :term:`GPRT`
-(General Purpose Ray Tracing Toolkit), a Vulkan-based GPU-only ray tracing
-library that is vendor-agnostic and built around the Vulkan API. Other GPU ray
-tracing libraries will also be explored in the future, with the eventual goal of
-providing complete feature parity between CPU and GPU backends of XDG.
