@@ -33,9 +33,8 @@ if (XDG_ENABLE_MOAB AND XDG_ENABLE_LIBMESH)
     list(APPEND TEST_NAMES test_cross_check)
 endif()
 
-# placing this last as it's a slow test
-if (XDG_ENABLE_MOAB AND XDG_BUILD_TOOLS) # There isn't really any reason why this can't run with libmesh but its a slow test already so i dont see the point in running the test for each of moab and libmesh
-    list(APPEND TEST_NAMES test_overlap_check) # This test is only built if tools are enabled
+if (XDG_ENABLE_MOAB AND XDG_BUILD_TOOLS)
+    list(APPEND TEST_NAMES test_overlap_check)
 endif()
 
 foreach(test ${TEST_NAMES})
@@ -49,9 +48,6 @@ foreach(test ${TEST_NAMES})
         TEST_PREFIX "${test}::"
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
-
-# overlap checking was moved into tools/, so this test now builds the tool
-# implementation directly in addition to linking against the xdg library
 
 if (TARGET test_overlap_check)
     target_sources(test_overlap_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../tools/overlap.cpp)
