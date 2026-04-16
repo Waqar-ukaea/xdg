@@ -61,8 +61,8 @@ void LibMeshManager::init() {
   // subdomains/volumes)
   discover_surface_elements();
 
-  // merge sidesets into interfaces where possible
-  merge_sidesets_into_interfaces();
+  // map sidesets to discovered interfaces where possible
+  map_sidesets_to_discovered_interfaces();
 
   // create surfaces from sidesets and interfaces
   create_surfaces_from_sidesets_and_interfaces();
@@ -161,12 +161,22 @@ void LibMeshManager::parse_metadata() {
   // surface metadata
   auto boundary_info = mesh()->get_boundary_info();
   auto sideset_name_map = boundary_info.get_sideset_name_map();
-  for (auto surface : surfaces_) {
-    if (sideset_name_map.find(surface) != sideset_name_map.end()) {
-      std::string sideset_name = sideset_name_map[surface];
-      remove_substring(sideset_name, "boundary:");
-      surface_metadata_[{surface, PropertyType::BOUNDARY_CONDITION}] = {
-          PropertyType::BOUNDARY_CONDITION, sideset_name};
+  for (const auto& [sideset_id, surfaces] : sideset_surface_map_) {
+    if (sideset_name_map.find(sideset_id) == sideset_name_map.end()) {
+      continue;
+    }
+
+    std::string sideset_name = sideset_name_map[sideset_id];
+    remove_substring(sideset_name, "boundary:");
+
+    for (auto surface : surfaces) {
+      const auto key = std::make_pair(surface, PropertyType::BOUNDARY_CONDITION);
+      if (surface_metadata_.count(key) != 0 &&
+          surface_metadata_.at(key).value != sideset_name) {
+        fatal_error("Conflicting boundary metadata assigned to surface {}", surface);
+      }
+
+      surface_metadata_[key] = {PropertyType::BOUNDARY_CONDITION, sideset_name};
     }
   }
 
@@ -180,26 +190,6 @@ void LibMeshManager::parse_metadata() {
       volume_metadata_[{volume, PropertyType::MATERIAL}] = {PropertyType::MATERIAL, subdomain_name};
     }
   }
-}
-
-template<typename T>
-bool intersects_set(const std::set<T>& set1, const std::set<T>& set2) {
-  for (const auto& elem : set2) {
-    if (set1.count(elem) > 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-template<typename T>
-bool contains_set(const std::set<T>& set1, const std::set<T>& set2) {
-  for (const auto& elem : set2) {
-    if (set1.count(elem) == 0) {
-      return false;
-    }
-  }
-  return true;
 }
 
 void LibMeshManager::map_id_spaces() {
@@ -252,79 +242,213 @@ void LibMeshManager::discover_surface_elements() {
   volume_element_id_map_ = IDBlockMapping<MeshID>(volume_element_ids);
 }
 
-void LibMeshManager::merge_sidesets_into_interfaces() {
-  // replace implicit interface surfaces with sideset surfaces where needed
-  // this is done by identifying the subdomain IDs for each sideset and
-  // replacing the interface elements with the sideset elements.
-  // Partial replacement is allowed. If any elements remain in the
-  // interface sets after this operation, they will be treated as interfaces
-  // between subdomains
+void LibMeshManager::map_sidesets_to_discovered_interfaces() {
+  // validate that each sideset face is already represented by one of the
+  // discovered interface sets. Same-block internal faces may appear in a
+  // sideset but are ignored here.
+  using InterfacePair = std::pair<MeshID, MeshID>;
+  auto resolve_interface_pair = [this](const InterfacePair& pair, InterfacePair& resolved_pair) {
+    if (subdomain_interface_map_.count(pair) != 0) {
+      resolved_pair = pair;
+      return true;
+    }
+
+    InterfacePair reversed_pair {pair.second, pair.first};
+    if (subdomain_interface_map_.count(reversed_pair) != 0) {
+      resolved_pair = reversed_pair;
+      return true;
+    }
+
+    return false;
+  };
+
+  sideset_interface_map_.clear();
+  sideset_interface_face_map_.clear();
+  // loop over discovered interface sets of faces and validate that each face in
+  // the explicit sidesets is represented in one of the discovered interface
+  // sets. As we go, we will also build a mapping of the explicit sidesets to
+  // the discovered interfaces that they overlap with and the faces they
+  // contribute to each interface for use in surface creation and metadata
+  // assignment in subsequent steps
   for (const auto& [sideset_id, sideset_elems] : sideset_face_map_) {
-    if (sideset_elems.size() == 0) continue;
+    if (sideset_elems.empty()) continue;
 
-    // determine the subdomain IDs for the sideset
-    // (possible that the face is the boundary of the mesh)
-    std::pair<MeshID, MeshID> subdomain_pair {ID_NONE, ID_NONE};
-    auto elem_pair = sidepair(sideset_elems.at(0));
-    subdomain_pair.first = elem_pair.first()->subdomain_id();
-    auto neighbor = elem_pair.second();
-    // set to ID_NONE if the neighbor is null
-    subdomain_pair.second = neighbor ? neighbor->subdomain_id() : ID_NONE;
+    size_t missing_face_count = 0;
+    for (const auto& face_id : sideset_elems) {
+      const auto& face = sidepair(face_id);
+      if (face.second() != nullptr &&
+          face.first()->subdomain_id() == face.second()->subdomain_id()) {
+        continue;
+      }
 
-    // if this is a defined sideset, it should match one of the pairs in the
-    // interface map. If it doesn't based on the current ordering of subdomains,
-    // swap the order
-    if(subdomain_interface_map_.count(subdomain_pair) == 0) {
-      subdomain_pair = {subdomain_pair.second, subdomain_pair.first};
+      // build interface pair for this face using the subdomain IDs of the elements on either side.
+      // If there is no neighbor element, use ID_NONE for the second subdomain ID.
+      // Then resolve this pair against the discovered interface pairs to determine which interface set this face belongs to.
+      InterfacePair face_pair {
+          face.first()->subdomain_id(),
+          face.second() ? face.second()->subdomain_id() : ID_NONE};
+
+      // If for some reason the face is internal to a subdomain, continue and do
+      // not associate it with an interface pair. This may occur in cases where
+      // the mesh has internal faces that are marked as sidesets, which is not
+      // ideal but we will allow it to pass through without error for now since
+      // it does not impact the mesh-based topology of the geometry.
+      if (face_pair.first == face_pair.second) {
+        continue;
+      }
+
+      InterfacePair resolved_pair;
+      // If the interface pair cannot be located in a disocvered interface set,
+      // then this face is not properly represented by the mesh-based topology and the missing face count is incremented.
+      if (!resolve_interface_pair(face_pair, resolved_pair)) {
+        missing_face_count++;
+        continue;
+      }
+
+      if (subdomain_interface_map_.at(resolved_pair).count(face_id) == 0) {
+        missing_face_count++;
+        continue;
+      }
+
+      // If this face is properly represented by a discovered interface, then we
+      // will record the association between the sideset and the interface pair
+      // it belongs to, as well as the face's membership in that interface pair
+      // for use in surface creation and metadata assignment in subsequent steps
+      sideset_interface_map_[sideset_id].insert(resolved_pair);
+      sideset_interface_face_map_[sideset_id][resolved_pair].push_back(face_id);
     }
 
-    // if the sideset pair doesn't exist in the interface map at all,
-    // then we have a problem or a poorly defined (or inconsistent) sideset
-    if (subdomain_interface_map_.count(subdomain_pair) == 0) {
-      fatal_error("No interface elements found for sideset");
-    }
-
-    // replace the interface elements with the sideset elements
-    std::set<MeshID>& interface_set = subdomain_interface_map_[subdomain_pair];
-
-    // remove the explicit sideset elements from the discovered
-    // interface elements that match this subdomain pair
-    for (const auto& elem : sideset_elems) {
-      interface_set.erase(elem);
+    // If any of the faces in explicit sidesets are not represented by the
+    // discovered mesh-based topology, the number of missing faces is reported
+    // and an error is raised.
+    if (missing_face_count > 0) {
+      fatal_error(
+          "Sideset {} has {} face(s) that are not represented by discovered interface sets",
+          sideset_id,
+          missing_face_count);
     }
   }
 }
 
 void LibMeshManager::create_surfaces_from_sidesets_and_interfaces() {
-  // start by creating surfaces for each sideset. These have explicit IDs
-  // and may be used to define boundary conditions.
-  for (const auto& [sideset_id, sideset_elems] : sideset_face_map_) {
-    surfaces().push_back(sideset_id);
-    for (const auto& elem : sideset_elems) {
-      surface_map_[sideset_id].push_back(elem);
+  // method overview:
+  // 1. loop over explicit sidesets and create surfaces for each associated
+  //    interface pair, tracking a mapping from the sideset to the surface(s) as
+  //    we go to support a one-to-many mapping of metadata associated with the
+  //    sideset to be registered fully when parse_metadata is called. If an
+  //    explicit sideset is only associated with one interface pair, we will
+  //    reuse the sideset ID for the surface since there is no risk of ID
+  //    conflicts in this case, otherwise we will assign a new surface ID.
+  // 2. loop over discovered interface pairs and create surfaces for any pairs
+  //    that are not fully covered by explicit sidesets, assigning any remaining
+  //    metadata from associated sidesets to the surface  as we go. Since these
+  //    surfaces are not associated with explicit sidesets, we will assign new
+  //    surface IDs to all of these surfaces to avoid any potential ID
+  //    conflicts.
+  using InterfacePair = std::pair<MeshID, MeshID>;
+  surfaces().clear();
+  surface_map_.clear();
+  surface_senses_.clear();
+  sideset_surface_map_.clear();
+
+  // to ensure that we do not reuse surface IDs, we will keep track of the
+  // surface IDs that have already been assigned to explicit sidesets and the
+  // interface pairs they are associated with
+  std::set<MeshID> reserved_surface_ids;
+  for (const auto& [sideset_id, _] : sideset_face_map_) {
+    reserved_surface_ids.insert(sideset_id);
+  }
+
+  // we will also keep track of the surface IDs that have been assigned to
+  // surfaces created for explicit sidesets and the interface pairs they are
+  // associated with to ensure that we do not reuse these IDs when creating
+  // surfaces for the remaining implicit interfaces that are not covered by
+  // explicit sidesets
+  std::set<MeshID> used_surface_ids;
+  MeshID next_surface_id = 1;
+  auto next_available_surface_id = [&]() {
+    while (reserved_surface_ids.count(next_surface_id) != 0 ||
+           used_surface_ids.count(next_surface_id) != 0) {
+      next_surface_id++;
+    }
+    used_surface_ids.insert(next_surface_id);
+    return next_surface_id++;
+  };
+
+  std::unordered_map<InterfacePair, std::set<MeshID>, MeshIDPairHash> covered_interface_faces;
+
+  // loop over explicit sidesets and create surfaces for each associated
+  // interface pair, assigning metadata from the sideset to the surface as we
+  // go. If an explicit sideset is only associated with one interface pair, we
+  // will reuse the sideset ID for the surface since there is no risk of ID
+  // conflicts in this case, otherwise we will assign a new surface ID.
+  std::vector<MeshID> sorted_sideset_ids;
+  sorted_sideset_ids.reserve(sideset_interface_face_map_.size());
+  for (const auto& [sideset_id, _] : sideset_interface_face_map_) {
+    sorted_sideset_ids.push_back(sideset_id);
+}
+  std::sort(sorted_sideset_ids.begin(), sorted_sideset_ids.end());
+
+  // here we loop over all explicit sidesets in sorted order to ensure that we
+  // assign surface IDs in a deterministic way
+  for (auto sideset_id : sorted_sideset_ids) {
+    const auto& interface_face_groups = sideset_interface_face_map_.at(sideset_id);
+    bool reuse_sideset_id = interface_face_groups.size() == 1;
+    // for each interface pair associated with this explicit sideset, we will
+    // create a surface and assign metadata from the sideset to the surface as
+    // we go. This is where explicit sidesets may be split into multiple
+    // surfaces if they are associated with multiple interface pairs, so we need
+    // to loop over each interface pair associated with the sideset to create
+    // surfaces for each pair
+    for (const auto& [pair, faces] : interface_face_groups) {
+      MeshID surface_id = reuse_sideset_id ? sideset_id : next_available_surface_id();
+      if (reuse_sideset_id) {
+        used_surface_ids.insert(surface_id);
+      }
+
+      surface_senses_[surface_id] = pair;
+      for (const auto& face : faces) {
+        surface_map_[surface_id].push_back(face);
+        covered_interface_faces[pair].insert(face);
+      }
+      surfaces().push_back(surface_id);
+      // update mapping of explicit sidesets to surfaces. This is important for
+      // propagating metadata on explicit sidesets to surfaces in the case that
+      // a single sideset spans multiple subdomain interfaces.
+      sideset_surface_map_[sideset_id].push_back(surface_id);
     }
   }
 
-  MeshID next_surface_id = surfaces().size() == 0 ? 1 : *std::max_element(surfaces().begin(), surfaces().end()) + 1;
+  // now that explicit sidesets have been processed, we loop over remaining
+  // discovered subdomain interfaces to complete the topological definition of
+  // the mesh
+  std::vector<InterfacePair> sorted_interface_pairs;
+  sorted_interface_pairs.reserve(subdomain_interface_map_.size());
+  for (const auto& [pair, _] : subdomain_interface_map_) {
+    sorted_interface_pairs.push_back(pair);
+  }
+  std::sort(sorted_interface_pairs.begin(), sorted_interface_pairs.end());
 
-  std::set<std::pair<MeshID, MeshID>> visited_interfaces;
-  for (auto &[pair, elements] : subdomain_interface_map_) {
+  for (const auto& pair : sorted_interface_pairs) {
+    std::vector<MeshID> remaining_faces;
+    const auto& elements = subdomain_interface_map_.at(pair);
+    remaining_faces.reserve(elements.size());
+    for (const auto& face : elements) {
+      if (covered_interface_faces[pair].count(face) == 0) {
+        remaining_faces.push_back(face);
+      }
+    }
 
-    if (elements.size() == 0) {
-      std::cout << "No elements found for interface between " << pair.first << " and " << pair.second << std::endl;
+    if (remaining_faces.empty()) {
       continue;
     }
-    // if we've already visited this interface, but going the other direction,
-    // skip it
-    if (visited_interfaces.count({pair.second, pair.first}) > 0)
-      continue;
-    visited_interfaces.insert(pair);
 
-    surface_senses_[next_surface_id] = pair;
-    for (const auto &elem : elements) {
-      surface_map_[next_surface_id].push_back(elem);
+    MeshID surface_id = next_available_surface_id();
+    surface_senses_[surface_id] = pair;
+    for (const auto& face : remaining_faces) {
+      surface_map_[surface_id].push_back(face);
     }
-    surfaces().push_back(next_surface_id++);
+    surfaces().push_back(surface_id);
   }
 }
 
