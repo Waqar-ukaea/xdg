@@ -114,12 +114,13 @@ Backend Terminology Mapping
 
 The BLAS/TLAS terminology is useful for describing the common two-level
 acceleration structure pattern, but XDG does not require every backend to expose
-objects with those exact names. For Embree's use in XDG, ``RTCGeometry`` maps
-to a BLAS and ``RTCScene`` maps to a TLAS. Embree still builds the concrete
-acceleration structures internally when those objects are committed, and the
-current XDG Embree backend attaches geometries directly to scenes rather than
-using Embree instance geometries. This mapping therefore describes how XDG uses
-Embree, while GPRT maps more directly onto the BLAS/TLAS terminology.
+explicit BLAS and TLAS objects. In XDG's Embree backend, ``RTCGeometry`` maps
+functionally to a BLAS and ``RTCScene`` maps functionally to a TLAS. Embree
+still builds the concrete acceleration structures internally when those objects
+are committed, and the current XDG Embree backend attaches geometries directly
+to scenes rather than using Embree instance geometries. Conceptually, the
+BLAS/TLAS terminology still applies, while a GPU library like GPRT represents
+the BLAS/TLAS and instancing model more explicitly.
 
 For :term:`surface tracking`, XDG traces against the boundary surfaces of a
 topological volume where each surface has its own BLAS:
@@ -131,28 +132,32 @@ topological volume where each surface has its own BLAS:
    * - Concept
      - Embree
      - GPRT
-   * - **Top level**
-     - TLAS: ``RTCScene`` for XDG's Embree backend
-     - TLAS ``GPRTAccel`` created with ``gprtInstanceAccelCreate``
-   * - **Bottom level**
-     - BLAS: ``RTCGeometry`` with user triangle primitives
-     - BLAS ``GPRTAccel`` created with ``gprtAABBAccelCreate`` for a
-       ``GPRTGeom``
-   * - **Instance**
-     - Not used currently; geometries are attached directly to scenes
-     - ``gprt::Instance`` created from the surface BLAS
+   * - **TLAS**
+     - ``RTCScene`` containing ``RTCGeometry`` BLAS for each of the volume's
+       boundary surfaces
+     - ``GPRTAccel`` containing ``gprt::Instance`` objects for the
+       ``GPRTAccel`` BLASes of the volume's boundary surfaces
+   * - **BLAS**
+     - ``RTCGeometry`` with user-defined AABBs over surface primitives
+     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs 
+       over surface primitives
+   * - **Instancing**
+     - Not used currently; ``RTCGeometry`` objects are attached directly to
+       ``RTCScene`` objects
+     - ``gprt::Instance`` objects created from BLASes and used with the TLAS
    * - **Topological volume**
      - Per-volume ``RTCScene`` containing the boundary-surface geometries
      - TLAS over the BLAS instances for the volume's boundary surfaces
    * - **Topological surface**
      - Cached ``RTCGeometry`` over the surface's triangle faces
-     - ``GPRTGeom`` and BLAS over the surface's triangle faces
+     - ``GPRTGeomOf<DPTriangleGeomData>`` and ``GPRTAccel`` BLAS over the
+       surface's triangle faces
 
 For :term:`volume tracking`, XDG traces against the volumetric elements inside a
 topological volume where each volume has exactly one BLAS containing all of its
 elements. In the current Embree backend this is a one-geometry-per-scene
-mapping, so the table below records the BLAS/TLAS correspondence for
-completeness:
+mapping. Volumetric tracking has not been implemented with GPRT yet, so the
+table below reflects the intended TLAS/BLAS mapping:
 
 .. list-table:: Volume tracking acceleration structure mapping
    :header-rows: 1
@@ -161,18 +166,26 @@ completeness:
    * - Concept
      - Embree
      - GPRT
-   * - **Top level**
-     - TLAS: ``RTCScene`` for the volume's element tree
-     - Not implemented currently
-   * - **Bottom level**
-     - BLAS: ``RTCGeometry`` with user volumetric-element primitives
-     - Not implemented currently
-   * - **Instance**
-     - Not used currently
-     - Not implemented currently
+   * - **TLAS**
+     - ``RTCScene`` containing a single ``RTCGeometry`` for the volume's
+       elements
+     - ``GPRTAccel`` containing a ``gprt::Instance`` object for the
+       volume-element ``GPRTAccel`` BLAS
+   * - **BLAS**
+     - ``RTCGeometry`` with user-defined AABBs over volumetric elements
+     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs 
+       over volumetric elements
+   * - **Instancing**
+     - Not used currently; the volume ``RTCGeometry`` is attached directly to
+       the volume ``RTCScene``
+     - ``gprt::Instance`` object created from the volume-element BLAS and used
+       with the TLAS
    * - **Topological volume**
-     - Per-volume ``RTCScene`` containing the volume-element geometry
-     - Planned analog would be an acceleration structure over volume elements
+     - Per-volume ``RTCScene`` containing a single ``RTCGeometry`` for the
+       volume's elements
+     - TLAS over the volume-element BLAS instance
    * - **Topological surface**
-     - Not the traversal object; intersections are with volumetric elements
-     - Not used for element traversal
+     - Part of the topology, but not represented in this volume-element
+       BLAS/TLAS mapping
+     - Part of the topology, but not represented in the volume-element
+       BLAS/TLAS mapping
