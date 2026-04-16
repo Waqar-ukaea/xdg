@@ -6,11 +6,10 @@ Glossary
 
 .. glossary::
 
-    AS
-        (Ray tracing) Acceleration Structure
-        A data structure that is used to accelerate ray tracing operations by
-        partitioning geometric primitives (i.e. faces/elements) in a way that 
-        allows for efficient traversal and intersection testing.
+    Acceleration Structure
+        A general term for ray tracing data structures that are used to accelerate 
+        ray tracing operations by partitioning geometric primitives (i.e. faces/elements) 
+        in a way that allows for efficient traversal and intersection testing.
 
     BLAS
         Bottom-Level Acceleration Structure. A lower-level acceleration

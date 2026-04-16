@@ -8,17 +8,18 @@ expensive ray-primitive intersection tests are performed.
 
 XDG relies primarily on :term:`BVH`-based acceleration structures. In keeping
 with the XDG design philosophy (:ref:`design_philosophy`), these structures are
-built and traversed by the selected ray tracing backend. On CPUs, XDG currently
-relies on the :term:`Embree` ray tracing kernels for BVH construction and
-traversal.
+built and traversed by the selected ray tracing backend, which is separable from
+the supported mesh backends. On CPUs, XDG currently relies on the :term:`Embree`
+ray tracing kernels for BVH construction and traversal.
 
 Axis-Aligned Bounding Boxes
 ---------------------------
 
-The basic building block is an axis-aligned bounding box (AABB). An AABB is a
-conservative box around a primitive or group of primitives, aligned with the
-coordinate axes. Ray-box intersection is much cheaper than ray-primitive
-intersection, so a ray that misses an AABB can skip everything inside it.
+The basic building block of these data structures is an axis-aligned bounding
+box (AABB). An AABB is a conservative box around a primitive or group of
+primitives, aligned with the coordinate axes. Ray-box intersection is much
+cheaper than ray-primitive intersection, so a ray that misses an AABB can skip
+everything inside it.
 
 .. figure:: ../assets/AABB.png
    :alt: Axis-aligned bounding box around a primitive
@@ -31,7 +32,7 @@ intersection, so a ray that misses an AABB can skip everything inside it.
 Bottom-Level Acceleration Structures
 ------------------------------------
 
-A :term:`BLAS` is the lower-level acceleration structure built over the
+A :term:`BLAS` is a lower-level acceleration structure built over the
 primitives of one piece of geometry. In practice, this is commonly a BVH:
 leaf nodes reference primitives, while internal nodes store AABBs that enclose
 their child nodes. Traversal starts at the root of the tree and only descends
@@ -49,10 +50,14 @@ Top-Level Acceleration Structures
 ---------------------------------
 
 Many ray tracing libraries use a two-level acceleration structure made from a
-:term:`TLAS` and one or more BLAS instances. The TLAS is built over higher-level
-geometry instances rather than individual mesh primitives. A ray first traverses
-the TLAS to reject whole pieces of geometry, then traverses only the relevant
-BLASes to test against individual primitives.
+:term:`TLAS` and one or more :term:`BLAS` instances. The TLAS itself contains only
+references to these instances of BLASes which means that individual BLASes can actually
+be used across multiple TLASes. And since they reference the whole data structure rather
+than individual mesh primitives, a ray can first traverse the TLAS and reject whole
+sections of geometry if it misses the BLAS associated with it and only then traverse down
+in the relevant BLAS the ray intersects with. Allowing for much more efficient tree traversal
+since large regions have already been culled by TLAS traversal. The diagram below shows a
+simple TLAS with two BLAS instances:
 
 .. figure:: ../assets/TLAS-krhonos.png
    :alt: Khronos top-level acceleration structure diagram
@@ -89,7 +94,7 @@ GPU-Accelerated Ray Tracing
 Ray tracing as a technique is highly parallelizable and has been extensively
 optimized for GPU architectures in the context of graphics rendering. As a
 result, there is a rich ecosystem of GPU-accelerated software and even
-hardware support (see :term:`RT hardware acceleration`) for ray tracing
+specialized hardware (see :term:`RT hardware acceleration`) for ray tracing
 operations. Historically, these capabilities have focused on single-precision
 support and have not typically been adopted in the scientific computing
 community.
@@ -109,15 +114,15 @@ Backend Terminology Mapping
 
 The BLAS/TLAS terminology is useful for describing the common two-level
 acceleration structure pattern, but XDG does not require every backend to expose
-objects with those exact names. In Embree, the exposed objects are
-``RTCGeometry`` and ``RTCScene``; Embree builds the concrete acceleration
-structures internally when those objects are committed. Because the current
-Embree backend does not use Embree instance geometries, its mapping should be
-read as BLAS-like and TLAS-like rather than as explicit BLAS/TLAS objects. GPRT
-maps more directly onto the BLAS/TLAS terminology.
+objects with those exact names. For Embree's use in XDG, ``RTCGeometry`` maps
+to a BLAS and ``RTCScene`` maps to a TLAS. Embree still builds the concrete
+acceleration structures internally when those objects are committed, and the
+current XDG Embree backend attaches geometries directly to scenes rather than
+using Embree instance geometries. This mapping therefore describes how XDG uses
+Embree, while GPRT maps more directly onto the BLAS/TLAS terminology.
 
 For :term:`surface tracking`, XDG traces against the boundary surfaces of a
-topological volume where each surface has its own BLAS-like structure:
+topological volume where each surface has its own BLAS:
 
 .. list-table:: Surface tracking acceleration structure mapping
    :header-rows: 1
@@ -127,10 +132,10 @@ topological volume where each surface has its own BLAS-like structure:
      - Embree
      - GPRT
    * - **Top level**
-     - TLAS-like object in ``RTCScene``
+     - TLAS: ``RTCScene`` for XDG's Embree backend
      - TLAS ``GPRTAccel`` created with ``gprtInstanceAccelCreate``
    * - **Bottom level**
-     - BLAS-like object in ``RTCGeometry`` with user triangle primitives
+     - BLAS: ``RTCGeometry`` with user triangle primitives
      - BLAS ``GPRTAccel`` created with ``gprtAABBAccelCreate`` for a
        ``GPRTGeom``
    * - **Instance**
@@ -144,9 +149,10 @@ topological volume where each surface has its own BLAS-like structure:
      - ``GPRTGeom`` and BLAS over the surface's triangle faces
 
 For :term:`volume tracking`, XDG traces against the volumetric elements inside a
-topological volume where each volume has exactly one BLAS-like structure containing 
-all of its elements. The more explicit BLAS/TLAS terminology is less applicable in this 
-case, but the mapping is shown below for completeness:
+topological volume where each volume has exactly one BLAS containing all of its
+elements. In the current Embree backend this is a one-geometry-per-scene
+mapping, so the table below records the BLAS/TLAS correspondence for
+completeness:
 
 .. list-table:: Volume tracking acceleration structure mapping
    :header-rows: 1
@@ -156,10 +162,10 @@ case, but the mapping is shown below for completeness:
      - Embree
      - GPRT
    * - **Top level**
-     - TLAS-like object in ``RTCScene`` for the volume's element tree
+     - TLAS: ``RTCScene`` for the volume's element tree
      - Not implemented currently
    * - **Bottom level**
-     - BLAS-like object in ``RTCGeometry`` with user volumetric-element primitives
+     - BLAS: ``RTCGeometry`` with user volumetric-element primitives
      - Not implemented currently
    * - **Instance**
      - Not used currently
