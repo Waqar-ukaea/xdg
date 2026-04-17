@@ -50,21 +50,21 @@ Top-Level Acceleration Structures
 ---------------------------------
 
 Many ray tracing libraries use a two-level acceleration structure made from a
-:term:`TLAS` and one or more :term:`BLAS` instances. The TLAS itself contains only
-references to these instances of BLASes which means that individual BLASes can actually
-be used across multiple TLASes. And since they reference the whole data structure rather
-than individual mesh primitives, a ray can first traverse the TLAS and reject whole
-sections of geometry if it misses the BLAS associated with it and only then traverse down
-in the relevant BLAS the ray intersects with. Allowing for much more efficient tree traversal
-since large regions have already been culled by TLAS traversal. The diagram below shows a
-simple TLAS with two BLAS instances:
+:term:`TLAS` and one or more :term:`BLAS`\s. The TLAS itself contains only
+references to these BLASs, which means individual BLASs can be used across
+multiple TLASs. Since they reference the whole data
+structure rather than individual mesh primitives, a ray can first traverse the
+TLAS and reject whole sections of geometry if it misses the associated BLAS. It
+then only traverses into the relevant BLASs that the ray intersects,
+making tree traversal more efficient after large regions have already been
+culled by TLAS traversal. The diagram below shows a simple TLAS with two BLASs:
 
 .. figure:: ../assets/TLAS-krhonos.png
    :alt: Khronos top-level acceleration structure diagram
    :align: center
    :width: 100%
 
-   Khronos illustration of a TLAS over lower-level BLAS instances.
+   Khronos illustration of a TLAS over lower-level BLASs.
 
 Mixed Precision Ray Tracing
 ===========================
@@ -136,18 +136,18 @@ topological volume where each surface has its own BLAS:
      - ``RTCScene`` containing ``RTCGeometry`` BLAS for each of the volume's
        boundary surfaces
      - ``GPRTAccel`` containing ``gprt::Instance`` objects for the
-       ``GPRTAccel`` BLASes of the volume's boundary surfaces
+       ``GPRTAccel`` BLASs of the volume's boundary surfaces
    * - **BLAS**
      - ``RTCGeometry`` with user-defined AABBs over surface primitives
-     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs 
+     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs
        over surface primitives
    * - **Instancing**
      - Not used currently; ``RTCGeometry`` objects are attached directly to
        ``RTCScene`` objects
-     - ``gprt::Instance`` objects created from BLASes and used with the TLAS
+     - ``gprt::Instance`` objects created from BLASs and used with the TLAS
    * - **Topological volume**
      - Per-volume ``RTCScene`` containing the boundary-surface geometries
-     - TLAS over the BLAS instances for the volume's boundary surfaces
+     - TLAS over the BLASs for the volume's boundary surfaces
    * - **Topological surface**
      - Cached ``RTCGeometry`` over the surface's triangle faces
      - ``GPRTGeomOf<DPTriangleGeomData>`` and ``GPRTAccel`` BLAS over the
@@ -173,7 +173,7 @@ table below reflects the intended TLAS/BLAS mapping:
        volume-element ``GPRTAccel`` BLAS
    * - **BLAS**
      - ``RTCGeometry`` with user-defined AABBs over volumetric elements
-     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs 
+     - ``GPRTAccel`` created from a ``GPRTGeom`` with user-defined AABBs
        over volumetric elements
    * - **Instancing**
      - Not used currently; the volume ``RTCGeometry`` is attached directly to
