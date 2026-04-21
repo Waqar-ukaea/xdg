@@ -112,6 +112,9 @@ class GPRTRayTracer : public RayTracer {
     
   private:
     void check_ray_buffer_capacity(size_t N);
+    
+    GPRTGeomOf<DPTriangleGeomData>
+    register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id);
 
     // GPRT objects 
     GPRTContext context_;
