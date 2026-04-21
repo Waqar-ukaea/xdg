@@ -25,6 +25,8 @@ struct PluckerIntersectionResult {
   double t = 0.0;      // Distance along the ray to the intersection point
 };
 
+static constexpr PluckerIntersectionResult EXIT_EARLY = {false, 0.0};
+
 /* Function to return the vertex with the lowest coordinates. To force the same
   ray-edge computation, the Plücker test needs to use consistent edge
   representation. This would be more simple with MOAB handles instead of
@@ -79,7 +81,7 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
   // If orientation is set, confirm that sign of plucker_coordinate indicate
   // correct orientation of intersection
   if (useOrientation && orientation * plucker_coord0 > 0) {
-    return {false, 0.0};
+    return EXIT_EARLY;
   }
 
   // Determine the value of the second Plucker coordinate from edge 1
@@ -90,13 +92,13 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
   // correct orientation of intersection
   if (useOrientation) {
     if (orientation * plucker_coord1 > 0) {
-      return {false, 0.0};
+      return EXIT_EARLY;
     }
     // If the orientation is not specified, all plucker_coords must be the same
     // sign or zero.
   } else if ((0.0 < plucker_coord0 && 0.0 > plucker_coord1) ||
              (0.0 > plucker_coord0 && 0.0 < plucker_coord1)) {
-    return {false, 0.0};
+    return EXIT_EARLY;
   }
 
   // Determine the value of the third Plucker coordinate from edge 2
@@ -107,7 +109,7 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
   // correct orientation of intersection
   if (useOrientation) {
     if (orientation * plucker_coord2 > 0) {
-      return {false, 0.0};
+      return EXIT_EARLY;
     }
     // If the orientation is not specified, all plucker_coords must be the same
     // sign or zero.
@@ -115,12 +117,12 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
              (0.0 > plucker_coord1 && 0.0 < plucker_coord2) ||
              (0.0 < plucker_coord0 && 0.0 > plucker_coord2) ||
              (0.0 > plucker_coord0 && 0.0 < plucker_coord2)) {
-    return {false, 0.0};
+    return EXIT_EARLY;
   }
 
   // check for coplanar case to avoid dividing by zero
   if (0.0 == plucker_coord0 && 0.0 == plucker_coord1 && 0.0 == plucker_coord2) {
-    return {false, 0.0};
+    return EXIT_EARLY;
   }
 
   // get the distance to intersection
@@ -153,7 +155,7 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
   }
 
   // is the intersection within distance limits?
-  if (dist_out < tMin || dist_out > tMax) return {false, 0.0};
+  if (dist_out < tMin || dist_out > tMax) return EXIT_EARLY;
 
   return {true, dist_out};
 }
