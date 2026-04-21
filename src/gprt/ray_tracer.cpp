@@ -117,7 +117,6 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
-  auto bump = bounding_box_bump(mesh_manager, volume_id);
   std::vector<gprt::Instance> surfaceBlasInstances; // BLAS for each (surface) geometry in this volume
   surfaceBlasInstances.reserve(volume_surfaces.size());
 
@@ -125,12 +124,14 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     GPRTGeomOf<DPTriangleGeomData> surfaceGeometry;
     GPRTAccel blas = nullptr;
     DPTriangleGeomData* geom_data = nullptr;
+    auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
+    auto max_parent_bbox_bump = std::max(bounding_box_bump(mesh_manager, forward_parent),
+                                         bounding_box_bump(mesh_manager, reverse_parent));
 
     if (!surface_to_geometry_map_.count(surf)) {
-      std::cout << "Creating geometry for surface " << surf << " in volume " << volume_id << std::endl;
       surfaceGeometry = register_surface(mesh_manager, surf);
       geom_data = gprtGeomGetParameters(surfaceGeometry);
-      geom_data->bounding_box_bump = bump;
+      geom_data->bounding_box_bump = max_parent_bbox_bump;
 
       gprtComputeLaunch(aabbPopulationProgram_,
                         {static_cast<uint32_t>(geom_data->num_faces), 1, 1},
@@ -144,24 +145,9 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
       surface_to_blas_map_[surf] = blas;
       blas_handles_.push_back(blas);
     } else {
-      std::cout << "Reusing existing geometry for surface " << surf << " in volume " << volume_id << std::endl;
       surfaceGeometry = surface_to_geometry_map_.at(surf);
       geom_data = gprtGeomGetParameters(surfaceGeometry);
       blas = surface_to_blas_map_.at(surf);
-
-      // If we have already visited surface update bump if necessary and rebuild BLAS if the AABBs have expanded
-      if (bump > geom_data->bounding_box_bump) {
-        geom_data->bounding_box_bump = bump;
-
-        gprtComputeLaunch(aabbPopulationProgram_,
-                          {static_cast<uint32_t>(geom_data->num_faces), 1, 1},
-                          {1, 1, 1},
-                          *geom_data);
-        gprtComputeSynchronize(context_);
-
-        // Rebuild the cached BLAS after the AABBs expand.
-        gprtAccelBuild(context_, blas, buildParams_);
-      }
     }
 
     gprt::Instance instance = gprtAccelGetInstance(blas);
@@ -169,7 +155,6 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     surfaceBlasInstances.push_back(instance);
     
     // Always update per-volume info
-    auto [forward_parent, reverse_parent] = mesh_manager->surface_senses(surf);
     if (volume_id == forward_parent) {
       geom_data->forward_vol = forward_parent;
       geom_data->forward_tree = tree;
