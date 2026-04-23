@@ -33,8 +33,7 @@ if (XDG_ENABLE_MOAB AND XDG_ENABLE_LIBMESH)
     list(APPEND TEST_NAMES test_cross_check)
 endif()
 
-# placing this last as it's a slow test
-if (XDG_ENABLE_MOAB)
+if (XDG_ENABLE_MOAB AND XDG_BUILD_TOOLS)
     list(APPEND TEST_NAMES test_overlap_check)
 endif()
 
@@ -49,6 +48,12 @@ foreach(test ${TEST_NAMES})
         TEST_PREFIX "${test}::"
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
+
+if (TARGET test_overlap_check)
+    target_sources(test_overlap_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../tools/overlap.cpp)
+    target_include_directories(test_overlap_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../tools)
+    target_link_libraries(test_overlap_check indicators::indicators)
+endif()
 
 
 set(

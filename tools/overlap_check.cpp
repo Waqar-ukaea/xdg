@@ -2,7 +2,7 @@
 #include <set>
 
 #include "xdg/error.h"
-#include "xdg/overlap.h"
+#include "overlap.h"
 
 #include "argparse/argparse.hpp"
 

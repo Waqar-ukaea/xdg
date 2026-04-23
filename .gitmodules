@@ -11,7 +11,7 @@
 [submodule "vendor/argparse"]
 	path = vendor/argparse
 	url = https://github.com/p-ranav/argparse.git
-[submodule "vendor/--force"]
+[submodule "vendor/indicators"]
 	path = vendor/indicators
 	url = https://github.com/p-ranav/indicators
 [submodule "vendor/linalg"]
