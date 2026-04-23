@@ -22,4 +22,4 @@
 	url = https://github.com/gprt-org/GPRT.git
 [submodule "vendor/deepeeRT"]
 	path = vendor/deepeeRT
-	url = https://github.com/ingowald/deepeeRT.git
+	url = https://github.com/NVIDIA/deepeeRT
