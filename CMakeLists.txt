@@ -400,7 +400,7 @@ if (XDG_LINK_MPI)
 endif()
 
 if (XDG_ENABLE_MOAB)
-  target_link_libraries(xdg MOAB)
+  target_link_libraries(xdg ${MOAB_LIBRARIES})
 endif()
 
 #=================================================================
