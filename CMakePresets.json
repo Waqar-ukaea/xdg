@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "base",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "$env{PRESET_CXX_FLAGS} $env{LLVM_CXX_FLAGS} $env{COMMON_CXX_FLAGS}",
+        "XDG_CMAKE_PRESET": "${presetName}"
+      },
+      "environment": {
+        "COMMON_CXX_FLAGS": ""
+      }
+    },
+    {
+      "name": "llvm",
+      "inherits": ["base"],
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      },
+      "environment": {
+        "LLVM_CXX_FLAGS": "-fopenmp -fopenmp-cuda-mode"
+      }
+    },
+    {
+      "name": "cubql_llvm_ada",
+      "inherits": ["llvm"],
+      "displayName": "cuBQL LLVM OpenMP offload RTX 2000 Ada",
+      "cacheVariables": {
+        "XDG_ENABLE_CUBQL": "ON"
+      },
+      "environment": {
+        "PRESET_CXX_FLAGS": "-fopenmp-targets=nvptx64 -Xopenmp-target -march=sm_80"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cubql_llvm_ada",
+      "configurePreset": "cubql_llvm_ada"
+    }
+  ]
+}

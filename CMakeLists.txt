@@ -7,6 +7,7 @@ option(XDG_ENABLE_LIBMESH "Enable support for the libMesh mesh library"      OFF
 option(XDG_LINK_MPI       "Link with MPI (for dependency compatibility)"     OFF)
 option(XDG_ENABLE_EMBREE  "Enable support for the Embree ray tracing library" ON)
 option(XDG_ENABLE_GPRT    "Enable support for the GPRT ray tracing library"  OFF)
+option(XDG_ENABLE_CUBQL   "Enable support for the cuBQL ray tracing library" OFF)
 option(XDG_BUILD_TESTS    "Enable C++ unit testing"                           ON)
 option(XDG_BUILD_TOOLS    "Enable tools and miniapps"                         ON)
 
@@ -18,6 +19,10 @@ set(XDG_VERSION ${OPENMC_VERSION_MAJOR}.${OPENMC_VERSION_MINOR}.${OPENMC_VERSION
 
 if(NOT CMAKE_BUILD_TYPE)
  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose build type" FORCE)
+endif()
+
+if(DEFINED XDG_CMAKE_PRESET)
+  message(STATUS "XDG CMake preset: ${XDG_CMAKE_PRESET}")
 endif()
 
 # Compiler options (things in this section may not be platform-portable)
@@ -111,6 +116,12 @@ if(XDG_ENABLE_GPRT)
   )
 endif()
 
+if(XDG_ENABLE_CUBQL)
+  list(APPEND VENDOR_PATHS
+    vendor/cuBQL
+  )
+endif()
+
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   option(XDG_GIT_SUBMODULE "Check submodules during build" ON)
   if(XDG_GIT_SUBMODULE)
@@ -176,17 +187,23 @@ if (NOT XDG_ENABLE_MOAB AND NOT XDG_ENABLE_LIBMESH)
 endif()
 
 # Ensure at least one ray tracing backend is enabled
-if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT)
+if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT AND NOT XDG_ENABLE_CUBQL)
   message(FATAL_ERROR
     "No ray tracing backend enabled. Enable at least one of:\n"
     "  -DXDG_ENABLE_EMBREE=ON\n"
-    "  -DXDG_ENABLE_GPRT=ON")
+    "  -DXDG_ENABLE_GPRT=ON\n"
+    "  -DXDG_ENABLE_CUBQL=ON")
 endif()
 
 # GPRT
 set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
 if (XDG_ENABLE_GPRT)
   add_subdirectory(vendor/GPRT)
+endif()
+
+if (XDG_ENABLE_CUBQL)
+  set(CUBQL_OMP ON CACHE BOOL "Build cuBQL with OpenMP target offload" FORCE)
+  add_subdirectory(vendor/cuBQL)
 endif()
 
 list(APPEND xdg_sources
@@ -221,6 +238,12 @@ list(APPEND xdg_device_codes
 dbl_deviceCode
 )
 
+endif()
+
+if (XDG_ENABLE_CUBQL)
+list(APPEND xdg_sources
+src/cuBQL/ray_tracer.cpp
+)
 endif()
 
 if (XDG_ENABLE_LIBMESH)
@@ -283,7 +306,12 @@ if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 endif()
 
 # attempt to find OpenMP and include it if found
-find_package(OpenMP)
+if (XDG_ENABLE_CUBQL)
+  find_package(OpenMP REQUIRED)
+else()
+  find_package(OpenMP)
+endif()
+
 if (OpenMP_CXX_FOUND)
   target_link_libraries(xdg OpenMP::OpenMP_CXX)
   target_compile_definitions(xdg PUBLIC XDG_HAVE_OPENMP)
@@ -319,6 +347,11 @@ endif()
 if (XDG_ENABLE_GPRT)
   target_compile_definitions(xdg PUBLIC XDG_ENABLE_GPRT)
   target_link_options(xdg INTERFACE -Wl,--unresolved-symbols=ignore-in-shared-libs)
+endif()
+
+if (XDG_ENABLE_CUBQL)
+  target_compile_definitions(xdg PUBLIC XDG_ENABLE_CUBQL)
+  target_link_libraries(xdg $<BUILD_INTERFACE:cuBQL>)
 endif()
 
 target_link_libraries(xdg fmt::fmt)
