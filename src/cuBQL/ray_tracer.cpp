@@ -1,6 +1,11 @@
 #include "xdg/cuBQL/ray_tracer.h"
 #include "xdg/error.h"
 
+// Guards to prevent CUDA headers from being included in host code, which causes failed compilation with LLVM-clang
+#if defined(__CUDA_ARCH__) && !defined(__CUDACC__)
+#undef __CUDA_ARCH__
+#endif
+
 #include "cuBQL/bvh.h"
 #include "cuBQL/builder/omp.h"
 
