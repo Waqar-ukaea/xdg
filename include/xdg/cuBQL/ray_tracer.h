@@ -2,6 +2,7 @@
 #define _XDG_CUBQL_RAY_TRACING_INTERFACE_H
 
 #include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -61,6 +62,9 @@ public:
                 const Position& origin,
                 const Direction& direction,
                 double& dist) const override;
+
+private:
+
 };
 
 } // namespace xdg
