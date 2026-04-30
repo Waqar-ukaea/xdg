@@ -6,6 +6,7 @@
 #undef __CUDA_ARCH__
 #endif
 
+#include <omp.h>
 #include "cuBQL/bvh.h"
 #include "cuBQL/builder/omp.h"
 
@@ -29,13 +30,77 @@ CuBQLRayTracer::register_volume(const std::shared_ptr<MeshManager>& mesh_manager
 }
 
 TreeID
-CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>&,
-                                    MeshID)
+CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_manager,
+                                    MeshID volume_id)
 {
-  // Testing cubql compilation
-  cuBQL::bvh_t<double, 3> bvh;
 
+  int gpu_id = 0; // TODO - how to manage GPU IDs in a multi-GPU system?
 
+  cuBQL::box3d *d_boxes = nullptr; // box3d is an alias for box_t<double, 3>
+  int num_boxes = 0;
+
+  cuBQL::bvh3d bvh; // bvh3d is an alias for BinaryBVH<double, 3> 
+  // bvh_t is an alias for BinaryBVH<T, D>, so bvh_t<double, 3> is also BinaryBVH<double, 3>
+
+  cuBQL::BuildConfig buildParams; // It looks like spatial median is the only supported method for omp builder
+  // Looks like the cuBQL::gpuBuilder is only pulled in when cubql is built with CUDA support 
+  
+  cuBQL::build_omp_target(bvh, d_boxes, num_boxes, buildParams, gpu_id); // build bvh on GPU 0 using OpenMP target offloading
+
+  SurfaceTreeID tree = next_surface_tree_id();
+  surface_trees_.push_back(tree);
+  auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
+
+  for (const auto &surf : volume_surfaces) {
+    auto num_faces = mesh_manager->num_surface_faces(surf);
+    auto vertices = mesh_manager->get_surface_vertices(surf);
+    auto indices = mesh_manager->get_surface_connectivity(surf);
+    
+    // Get host side storage for vertices using cubql friendly types 
+    std::vector<cuBQL::vec3d> h_vertices;
+    h_vertices.reserve(vertices.size());
+    for (const auto& vertex : vertices) {
+      h_vertices.emplace_back(vertex.x, vertex.y, vertex.z);
+    }
+
+    // Get host side storage for indices using cubql friendly types
+    std::vector<cuBQL::vec3i> h_indices;
+    h_indices.reserve(indices.size() / 3);
+    for (size_t i = 0; i < indices.size(); i += 3) {
+      h_indices.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+    }
+
+    // copy vertices and indices to device
+    auto* d_vertices = static_cast<cuBQL::vec3d*>
+      (omp_target_alloc(h_vertices.size() * sizeof(cuBQL::vec3d), gpu_id));
+
+    auto* d_indices = static_cast<cuBQL::vec3i*>
+      (omp_target_alloc(h_indices.size() * sizeof(cuBQL::vec3i), gpu_id));
+
+    // Create device storage for triangle AABBs to be computed in parallel on GPU
+    auto* d_aabbs = static_cast<cuBQL::box3d*>
+      (omp_target_alloc(h_indices.size() * sizeof(cuBQL::box3d), gpu_id));
+
+    // Create AABBs for each triangle in parallel on GPU
+    // TODO - Should this be its own function?
+    // TODO - How can this be extended for tets and other element types?
+    #pragma omp target device(gpu_id) is_device_ptr(d_vertices, d_indices, d_aabbs)
+    #pragma omp teams distribute parallel for
+    for (uint32_t primID = 0; primID < num_faces; ++primID) {
+      cuBQL::vec3i indices = d_indices[primID];
+
+      cuBQL::vec3d A = d_vertices[indices.x];
+      cuBQL::vec3d B = d_vertices[indices.y];
+      cuBQL::vec3d C = d_vertices[indices.z];
+
+      cuBQL::box3d aabb;
+      aabb.extend(A);
+      aabb.extend(B);
+      aabb.extend(C);
+
+      d_aabbs[primID] = aabb;
+    }
+  }
   return TREE_NONE;
 }
 
