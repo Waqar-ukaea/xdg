@@ -16,7 +16,7 @@ using LibMesh_Interface = std::integral_constant<MeshLibrary, MeshLibrary::LIBME
 
 using Embree_Raytracer = std::integral_constant<RTLibrary, RTLibrary::EMBREE>;
 using GPRT_Raytracer = std::integral_constant<RTLibrary, RTLibrary::GPRT>;
-
+using CuBQL_Raytracer = std::integral_constant<RTLibrary, RTLibrary::CUBQL>;
 } // namespace xdg::test
 
 namespace Catch {
@@ -47,6 +47,11 @@ inline void check_ray_tracer_supported(xdg::RTLibrary rt) {
   #else // XDG_ENABLE_GPRT
   if (rt == xdg::RTLibrary::GPRT && !system_has_vk_device()) {
     SKIP("No Vulkan device found; skipping GPRT tests.");
+  }
+  #endif
+  #ifndef XDG_ENABLE_CUBQL
+  if (rt == xdg::RTLibrary::CUBQL) {
+    SKIP("XDG not built with cuBQL backend; skipping cuBQL tests.");
   }
   #endif
 }
@@ -92,6 +97,11 @@ create_raytracer(xdg::RTLibrary rt) {
   #ifdef XDG_ENABLE_GPRT
   if (rt == xdg::RTLibrary::GPRT)
     return std::make_shared<xdg::GPRTRayTracer>();
+  #endif
+
+  #ifdef XDG_ENABLE_CUBQL
+  if (rt == xdg::RTLibrary::CUBQL)
+    return std::make_shared<xdg::CuBQLRayTracer>();
   #endif
 
   return nullptr;
