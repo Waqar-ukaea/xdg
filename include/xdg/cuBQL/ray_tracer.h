@@ -12,6 +12,13 @@
 #include "xdg/ray.h"
 #include "xdg/ray_tracing_interface.h"
 
+// Guards to prevent CUDA headers from being included in host code, which causes failed compilation with LLVM-clang
+#if defined(__CUDA_ARCH__) && !defined(__CUDACC__)
+#undef __CUDA_ARCH__
+#endif
+
+#include "cuBQL/bvh.h"
+
 
 
 namespace xdg {
@@ -64,6 +71,9 @@ public:
                 double& dist) const override;
 
 private:
+  std::vector<cuBQL::bvh3d> surface_bvhs_; // BVH for each surface tree
+// std::unordered_map<TreeID, cuBQL::bvh3d> surface_volume_tree_to_bvh_map; // Map from surface tree IDs to their corresponding cuBQL BVH structures
+
 
 };
 

@@ -1,15 +1,9 @@
 #include "xdg/cuBQL/ray_tracer.h"
 #include "xdg/error.h"
 
-// Guards to prevent CUDA headers from being included in host code, which causes failed compilation with LLVM-clang
-#if defined(__CUDA_ARCH__) && !defined(__CUDACC__)
-#undef __CUDA_ARCH__
-#endif
-
 #include <omp.h>
-#include "cuBQL/bvh.h"
 #include "cuBQL/builder/omp.h"
-
+#include "cuBQL/traversal/shrinkingRadiusQuery.h"
 namespace xdg {
 
 CuBQLRayTracer::CuBQLRayTracer() = default;
@@ -111,7 +105,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
 
     // Construct the bvh on the gpu using the AABBs with openmp pathway
     cuBQL::build_omp_target(bvh, d_aabbs, num_faces, buildParams, gpu_id); 
-    
+    surface_bvhs_.push_back(bvh); // Store the BVH for this surface tree
   }
   return TREE_NONE;
 }
@@ -157,12 +151,16 @@ bool CuBQLRayTracer::point_in_volume(TreeID,
 
 std::pair<double, MeshID>
 CuBQLRayTracer::ray_fire(TreeID,
-                         const Position&,
-                         const Direction&,
-                         const double,
-                         HitOrientation,
+                         const Position& origin,
+                         const Direction& direction,
+                         const double tmax,
+                         HitOrientation hitOrientation,
                          std::vector<MeshID>* const)
 {
+
+  // For a closest hit query this is the traversal template we want to make use of
+  cuBQL::shrinkingRadiusQuery::forEachPrim(prim_lambda, node_lambda, surface_bvhs_[0], tmax)
+
   fatal_error("Ray-fire queries not currently supported with cuBQL ray tracer");
   return {INFTY, ID_NONE};
 }
