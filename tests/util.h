@@ -17,7 +17,7 @@ using LibMesh_Interface = std::integral_constant<MeshLibrary, MeshLibrary::LIBME
 
 using Embree_Raytracer = std::integral_constant<RTLibrary, RTLibrary::EMBREE>;
 using GPRT_Raytracer = std::integral_constant<RTLibrary, RTLibrary::GPRT>;
-
+using CuBQL_Raytracer = std::integral_constant<RTLibrary, RTLibrary::CUBQL>;
 } // namespace xdg::test
 
 namespace Catch {
@@ -46,6 +46,13 @@ inline bool ray_tracer_available(xdg::RTLibrary rt) {
     case xdg::RTLibrary::GPRT:
     #ifdef XDG_ENABLE_GPRT
       return system_has_vk_device();
+    #else
+      return false;
+    #endif
+
+    case xdg::RTLibrary::CUBQL:
+    #ifdef XDG_ENABLE_CUBQL
+      return true;
     #else
       return false;
     #endif
@@ -81,6 +88,12 @@ inline void check_ray_tracer_supported(xdg::RTLibrary rt) {
   if (!ray_tracer_available(rt)) {
     SKIP(fmt::format("{} backend unavailable; skipping.", xdg::RT_LIB_TO_STR.at(rt)));
   }
+  #endif
+  #ifndef XDG_ENABLE_CUBQL
+  if(!ray_tracer_available(xdg::RTLibrary::CUBQL)) {
+    SKIP(fmt::format("{} backend unavailable; skipping.", xdg::RT_LIB_TO_STR.at(rt)));
+  }
+  #endif
 }
 
 inline void check_mesh_library_supported(xdg::MeshLibrary mesh) {
@@ -116,6 +129,11 @@ create_raytracer(xdg::RTLibrary rt) {
   #ifdef XDG_ENABLE_GPRT
   if (rt == xdg::RTLibrary::GPRT)
     return std::make_shared<xdg::GPRTRayTracer>();
+  #endif
+
+  #ifdef XDG_ENABLE_CUBQL
+  if (rt == xdg::RTLibrary::CUBQL)
+    return std::make_shared<xdg::CuBQLRayTracer>();
   #endif
 
   return nullptr;

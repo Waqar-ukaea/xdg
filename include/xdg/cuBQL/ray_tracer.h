@@ -71,10 +71,28 @@ public:
                 double& dist) const override;
 
 private:
-  std::vector<cuBQL::bvh3d> surface_bvhs_; // BVH for each surface tree
-// std::unordered_map<TreeID, cuBQL::bvh3d> surface_volume_tree_to_bvh_map; // Map from surface tree IDs to their corresponding cuBQL BVH structures
+  struct CuBQLSurfaceBVH {
+    MeshID surface {ID_NONE};
+    cuBQL::bvh3d bvh;
 
+    cuBQL::vec3d* d_vertices {nullptr};
+    cuBQL::vec3i* d_indices {nullptr};
+    cuBQL::vec3d* d_normals {nullptr};
+    MeshID* d_primitive_refs {nullptr};
 
+    uint32_t num_vertices {0};
+    uint32_t num_faces {0};
+    int gpu_id {0};
+  };
+
+  struct CuBQLRayHit {
+    double distance {INFTY};
+    MeshID surface {ID_NONE};
+    MeshID primitive {ID_NONE};
+  };
+
+  std::vector<CuBQLSurfaceBVH> surface_bvhs_;
+  std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_bvh_indices_;
 };
 
 } // namespace xdg
