@@ -220,6 +220,9 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     for (const auto& face : mesh_manager->get_surface_faces(surf)) {
       h_primitive_refs.push_back(face);
 
+      // TODO: This pre-orients normals for the current volume tree. If cuBQL
+      // starts reusing a single surface BVH/BLAS across both parent volumes,
+      // normals must be flipped at intersection time based on the queried volume.
       auto normal = mesh_manager->face_normal(face);
       if (volume_id == reverse_parent) {
         normal = -normal;
@@ -366,8 +369,8 @@ CuBQLRayTracer::ray_fire(TreeID tree,
   double closest_distance = tmax;
   MeshID closest_surface = ID_NONE;
   MeshID closest_primitive = ID_NONE;
-  auto* d_surface_hit = static_cast<CuBQLRayHit*>
-    (omp_target_alloc(sizeof(CuBQLRayHit), gpu_id));
+  auto* d_surface_hit = static_cast<CubqlHit*>
+    (omp_target_alloc(sizeof(CubqlHit), gpu_id));
 
   const auto& surface_bvh_indices = tree_to_surface_bvh_indices_.at(tree);
   for (const auto surface_bvh_index : surface_bvh_indices) {
@@ -379,11 +382,11 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     const cuBQL::vec3d* d_normals = surface_bvh.d_normals;
     const MeshID* d_primitive_refs = surface_bvh.d_primitive_refs;
 
-    CuBQLRayHit surface_hit;
+    CubqlHit surface_hit;
     surface_hit.distance = closest_distance + cubql_ray_hit_tolerance(closest_distance);
     omp_target_memcpy(d_surface_hit,
                       &surface_hit,
-                      sizeof(CuBQLRayHit),
+                      sizeof(CubqlHit),
                       0,
                       0,
                       gpu_id,
@@ -396,9 +399,17 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     #pragma omp target device(gpu_id) \
       is_device_ptr(d_vertices, d_indices, d_normals, d_primitive_refs, d_exclude_primitives, d_surface_hit)
     {
-      cuBQL::ray3d ray(ray_origin, ray_direction, 0.0, d_surface_hit->distance);
+      cuBQL::ray3d ray;
+      ray.origin = ray_origin;
+      ray.direction = ray_direction;
+      ray.tMin = 0.0;
+      ray.tMax = d_surface_hit->distance;
 
-      auto intersect_prim = [=, &ray]
+      // lambda for primitive intersection
+      // - culls excluded primitives
+      // - culls backfacing or frontfacing hits based on hitOrientation
+      // - calls plucker intersection 
+      auto xdg_plucker_intersect_prim = [=, &ray]
         (uint32_t prim_id) -> double
       {
         const MeshID primitive_ref = d_primitive_refs[prim_id];
@@ -441,23 +452,27 @@ CuBQLRayTracer::ray_fire(TreeID tree,
         return ray.tMax;
       };
 
-      cuBQL::shrinkingRayQuery::forEachPrim(intersect_prim, bvh, ray);
+      // Traversal template from cuBQL 
+      cuBQL::shrinkingRayQuery::forEachPrim(xdg_plucker_intersect_prim, bvh, ray);
     }
 
     omp_target_memcpy(&surface_hit,
                       d_surface_hit,
-                      sizeof(CuBQLRayHit),
+                      sizeof(CubqlHit),
                       0,
                       0,
                       host_id,
                       gpu_id);
-
+    
+    // Temporary cuBQL-only closest-hit reduction while each surface BVH is queried
+    // independently. Embree/GPRT delegate this to a single scene/TLAS traversal;
+    // once cuBQL does the same, this tolerance/tie-break logic should go away.
     const double hit_tolerance = cubql_ray_hit_tolerance(closest_distance);
     const bool closer_hit = surface_hit.distance < closest_distance - hit_tolerance;
     const bool tied_hit = cuBQL::abst(surface_hit.distance - closest_distance) <= hit_tolerance;
     const bool lower_surface_tie = closest_surface == ID_NONE ||
       surface_bvh.surface < closest_surface;
-
+    
     if (surface_hit.primitive != ID_NONE && (closer_hit || (tied_hit && lower_surface_tie))) {
       closest_distance = surface_hit.distance;
       closest_surface = surface_bvh.surface;
