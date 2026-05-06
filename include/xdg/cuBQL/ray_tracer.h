@@ -85,7 +85,7 @@ private:
     int gpu_id {0};
   };
 
-  struct CuBQLRayHit {
+  struct CubqlHit {
     double distance {INFTY};
     MeshID surface {ID_NONE};
     MeshID primitive {ID_NONE};
