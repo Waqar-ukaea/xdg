@@ -242,6 +242,14 @@ if (XDG_ENABLE_CUBQL)
 list(APPEND xdg_sources
 src/cuBQL/ray_tracer.cpp
 )
+
+# We need a precompile definition to switch to using the cuBQL math types in the shared
+# plucker intersection code. The compile definition is used in dp__math.h
+set_source_files_properties(
+  src/cuBQL/ray_tracer.cpp
+  PROPERTIES COMPILE_DEFINITIONS XDG_DP_MATH_CUBQL
+)
+
 endif()
 
 if (XDG_ENABLE_LIBMESH)

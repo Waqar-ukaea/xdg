@@ -1,5 +1,6 @@
 #include "xdg/cuBQL/ray_tracer.h"
 #include "xdg/error.h"
+#include "xdg/geometry/plucker.h"
 
 #include <omp.h>
 #include "cuBQL/builder/omp.h"
@@ -10,120 +11,10 @@
 
 namespace xdg {
 
-struct CuBQLPluckerIntersectionResult {
-  bool hit {false};
-  double t {0.0};
-};
-
 static inline __cubql_both double cubql_ray_hit_tolerance(double t)
 {
   constexpr double tolerance = 64.0 * 2.2204460492503131e-16;
   return tolerance * (1.0 + cuBQL::abst(t));
-}
-
-static inline __cubql_both bool cubql_plucker_first(cuBQL::vec3d a,
-                                                    cuBQL::vec3d b)
-{
-  if (a.x < b.x) return true;
-  if (a.x > b.x) return false;
-
-  if (a.y < b.y) return true;
-  if (a.y > b.y) return false;
-
-  return a.z < b.z;
-}
-
-static inline __cubql_both double cubql_plucker_edge_test(cuBQL::vec3d vertex_a,
-                                                          cuBQL::vec3d vertex_b,
-                                                          cuBQL::vec3d ray,
-                                                          cuBQL::vec3d ray_normal)
-{
-  double pip;
-  if (cubql_plucker_first(vertex_a, vertex_b)) {
-    const cuBQL::vec3d edge = vertex_b - vertex_a;
-    const cuBQL::vec3d edge_normal = cross(edge, vertex_a);
-    pip = dot(ray, edge_normal) + dot(ray_normal, edge);
-  } else {
-    const cuBQL::vec3d edge = vertex_a - vertex_b;
-    const cuBQL::vec3d edge_normal = cross(edge, vertex_b);
-    pip = dot(ray, edge_normal) + dot(ray_normal, edge);
-    pip = -pip;
-  }
-
-  constexpr double dbl_zero_tol = 20.0 * 2.2204460492503131e-16;
-  if (cuBQL::abst(pip) < dbl_zero_tol) {
-    pip = 0.0;
-  }
-  return pip;
-}
-
-static inline __cubql_both CuBQLPluckerIntersectionResult
-cubql_plucker_ray_tri_intersect(cuBQL::vec3d vertices[3],
-                                cuBQL::vec3d origin,
-                                cuBQL::vec3d direction,
-                                double t_max,
-                                double t_min)
-{
-  const cuBQL::vec3d ray_a = direction;
-  const cuBQL::vec3d ray_b = cross(direction, origin);
-
-  const double plucker_coord_0 =
-    cubql_plucker_edge_test(vertices[0], vertices[1], ray_a, ray_b);
-
-  const double plucker_coord_1 =
-    cubql_plucker_edge_test(vertices[1], vertices[2], ray_a, ray_b);
-
-  if ((0.0 < plucker_coord_0 && 0.0 > plucker_coord_1) ||
-      (0.0 > plucker_coord_0 && 0.0 < plucker_coord_1)) {
-    return {};
-  }
-
-  const double plucker_coord_2 =
-    cubql_plucker_edge_test(vertices[2], vertices[0], ray_a, ray_b);
-
-  if ((0.0 < plucker_coord_1 && 0.0 > plucker_coord_2) ||
-      (0.0 > plucker_coord_1 && 0.0 < plucker_coord_2) ||
-      (0.0 < plucker_coord_0 && 0.0 > plucker_coord_2) ||
-      (0.0 > plucker_coord_0 && 0.0 < plucker_coord_2)) {
-    return {};
-  }
-
-  if (plucker_coord_0 == 0.0 &&
-      plucker_coord_1 == 0.0 &&
-      plucker_coord_2 == 0.0) {
-    return {};
-  }
-
-  const double inverse_sum =
-    1.0 / (plucker_coord_0 + plucker_coord_1 + plucker_coord_2);
-
-  const cuBQL::vec3d intersection =
-    plucker_coord_0 * inverse_sum * vertices[2] +
-    plucker_coord_1 * inverse_sum * vertices[0] +
-    plucker_coord_2 * inverse_sum * vertices[1];
-
-  int idx = 0;
-  double max_abs_dir = 0.0;
-  for (int i = 0; i < 3; ++i) {
-    if (cuBQL::abst(direction[i]) > max_abs_dir) {
-      idx = i;
-      max_abs_dir = cuBQL::abst(direction[i]);
-    }
-  }
-
-  double dist_out = (intersection[idx] - origin[idx]) / direction[idx];
-
-  const double u = plucker_coord_2 * inverse_sum;
-  const double v = plucker_coord_0 * inverse_sum;
-  if (u < 0.0 || v < 0.0 || (u + v) > 1.0) {
-    return {};
-  }
-
-  if (dist_out < t_min || dist_out > t_max) {
-    return {};
-  }
-
-  return {true, dist_out};
 }
 
 CuBQLRayTracer::CuBQLRayTracer() = default;
@@ -438,11 +329,14 @@ CuBQLRayTracer::ray_fire(TreeID tree,
           return ray.tMax;
         }
 
-        auto intersection = cubql_plucker_ray_tri_intersect(vertices,
-                                                            ray.origin,
-                                                            ray.direction,
-                                                            ray.tMax,
-                                                            ray.tMin);
+        // Reuse same plucker intersection function applied to other ray tracers
+        auto intersection = plucker_ray_tri_intersect(vertices,
+                                                      ray.origin,
+                                                      ray.direction,
+                                                      ray.tMax,
+                                                      ray.tMin,
+                                                      false,
+                                                      0);
         if (intersection.hit) {
           d_surface_hit->distance = intersection.t;
           d_surface_hit->primitive = primitive_ref;
