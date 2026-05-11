@@ -56,19 +56,14 @@ TEST_CASE("Test Pincell RT libraries Cross-Check ray_fire queries", "[moab][rayf
     SKIP("Fewer than two ray tracing backends are available; skipping cross-check.");
   }
 
-  std::vector<Direction> directions {
-    {0.23, 0.45, 0.86},
-    {-0.52, 0.37, 0.77},
-    {0.61, -0.71, 0.35},
-    {-0.31, -0.58, 0.75},
-    {0.83, 0.18, -0.53},
-    {-0.44, 0.82, -0.36}
-  };
-  for (auto& direction : directions) {
-    direction.normalize();
+  srand48(12345); // set fixed seed for rng 
+  std::vector<Direction> directions(1000);
+  for (auto &dir : directions) {
+    dir = rand_dir();
   }
 
   const Position origin {0.0, 0.0, 0.0};
+
   const auto& reference_case = rt_cases.front(); // This acts as our reference case
 
   for (const auto& volume : reference_case.xdg->mesh_manager()->volumes()) {
