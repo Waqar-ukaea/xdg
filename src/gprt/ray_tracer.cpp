@@ -7,7 +7,7 @@ namespace xdg {
 GPRTRayTracer::GPRTRayTracer()
 {
   if (!system_has_vk_device()) {
-    fatal_error("No Vulkan device found; cannot initialize GPRT ray tracer.");
+    fatal_error("No Vulkan ray tracing capable device found; cannot initialize GPRT ray tracer.");
   }
 
   gprtRequestRayTypeCount(numRayTypes_); // Set the number of shaders which can be set to the same geometry
