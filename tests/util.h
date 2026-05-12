@@ -7,7 +7,7 @@
 #include "xdg/constants.h"
 #include "xdg/ray_tracers.h"
 #include "xdg/mesh_managers.h"
-#include "vulkan_probe.h"
+#include "xdg/gprt/vulkan_probe.h"
 
 namespace xdg::test {
 
