@@ -1,4 +1,5 @@
 #include <random>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -45,8 +46,10 @@ inline void check_ray_tracer_supported(xdg::RTLibrary rt) {
     SKIP("XDG not built with GPRT backend; skipping GPRT tests.");
   }
   #else // XDG_ENABLE_GPRT
-  if (rt == xdg::RTLibrary::GPRT && !system_has_vk_device()) {
-    SKIP("No Vulkan device found; skipping GPRT tests.");
+  if (rt == xdg::RTLibrary::GPRT) {
+    if (!system_has_vk_device()) {
+      SKIP("No Vulkan ray tracing capable device found; skipping GPRT tests.");
+    }
   }
   #endif
 }
