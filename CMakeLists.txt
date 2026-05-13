@@ -185,6 +185,7 @@ endif()
 # GPRT
 set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
 if (XDG_ENABLE_GPRT)
+  find_package(Vulkan REQUIRED)
   add_subdirectory(vendor/GPRT)
 endif()
 
@@ -317,6 +318,12 @@ endif()
 if (XDG_ENABLE_GPRT)
   target_compile_definitions(xdg PUBLIC XDG_ENABLE_GPRT)
   target_link_options(xdg PRIVATE -Wl,--unresolved-symbols=ignore-in-shared-libs)
+  target_include_directories(xdg PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt/math
+  )
+  target_link_libraries(xdg PRIVATE Vulkan::Vulkan)
 endif()
 
 target_link_libraries(xdg PRIVATE fmt::fmt)
@@ -344,7 +351,8 @@ if (XDG_ENABLE_GPRT)
     )
     target_link_libraries(xdg PRIVATE ${device_code})
   endforeach()
-target_link_libraries(xdg PRIVATE $<BUILD_INTERFACE:gprt>)
+add_dependencies(xdg gprt)
+target_link_libraries(xdg PRIVATE $<TARGET_FILE:gprt>)
 endif()
 
 # ===================
