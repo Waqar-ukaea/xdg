@@ -318,10 +318,10 @@ endif()
 if (XDG_ENABLE_GPRT)
   target_compile_definitions(xdg PUBLIC XDG_ENABLE_GPRT)
   target_link_options(xdg PRIVATE -Wl,--unresolved-symbols=ignore-in-shared-libs)
-  target_include_directories(xdg PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt/math
+  target_include_directories(xdg PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/GPRT/gprt/math>
   )
   target_link_libraries(xdg PRIVATE Vulkan::Vulkan)
 endif()
