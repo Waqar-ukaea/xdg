@@ -183,7 +183,7 @@ if (NOT XDG_ENABLE_EMBREE AND NOT XDG_ENABLE_GPRT)
 endif()
 
 # GPRT
-set(GPRT_BUILD_SHARED ON  CACHE BOOL "Build GPRT as a shared library" FORCE)
+set(GPRT_BUILD_SHARED ON CACHE BOOL "Build GPRT as a shared library" FORCE)
 if (XDG_ENABLE_GPRT)
   find_package(Vulkan REQUIRED)
   add_subdirectory(vendor/GPRT)
