@@ -357,7 +357,7 @@ endif()
 
 if (XDG_ENABLE_CUBQL)
   target_compile_definitions(xdg PUBLIC XDG_ENABLE_CUBQL)
-  target_link_libraries(xdg $<BUILD_INTERFACE:cuBQL>)
+  target_link_libraries(xdg PRIVATE $<BUILD_INTERFACE:cuBQL>)
   # TODO: Stop relying on LD_LIBRARY_PATH for LLVM OpenMP offload runtimes.
   # As a temporary measure whilst figuring out our way around cuBQL this is 
   # okay but in the long run we should aim for a more robust solutions here.
