@@ -355,7 +355,6 @@ if (XDG_ENABLE_GPRT)
   target_link_options(xdg PRIVATE -Wl,--unresolved-symbols=ignore-in-shared-libs)
 endif()
 
-target_link_libraries(xdg PRIVATE fmt::fmt)
 if (XDG_ENABLE_CUBQL)
   target_compile_definitions(xdg PUBLIC XDG_ENABLE_CUBQL)
   target_link_libraries(xdg $<BUILD_INTERFACE:cuBQL>)
@@ -368,10 +367,7 @@ if (XDG_ENABLE_CUBQL)
   # whether install RPATH should remain environment-module based or be opt-in.
 endif()
 
-target_link_libraries(xdg fmt::fmt)
-
-#TODO: refactor to only be required when tools are enabled
-target_link_libraries(xdg indicators::indicators)
+target_link_libraries(xdg PRIVATE fmt::fmt)
 
 # ==========================
 # Link ray tracing libraries
