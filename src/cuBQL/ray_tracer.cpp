@@ -30,21 +30,30 @@ CuBQLRayTracer::CuBQLRayTracer()
 
 CuBQLRayTracer::~CuBQLRayTracer()
 {
-  for (auto& surface_bvh : surface_bvhs_) {
-    cuBQL::omp::Context context(surface_bvh.gpu_id);
+  for (auto& surface_blas : surface_blases_) {
+    cuBQL::omp::Context context(surface_blas.gpu_id);
 
-    if (surface_bvh.bvh.nodes || surface_bvh.bvh.primIDs) {
-      cuBQL::omp::freeBVH(surface_bvh.bvh, &context);
+    if (surface_blas.bvh.nodes || surface_blas.bvh.primIDs) {
+      cuBQL::omp::freeBVH(surface_blas.bvh, &context);
     }
 
-    if (surface_bvh.d_vertices) {
-      omp_target_free(surface_bvh.d_vertices, surface_bvh.gpu_id);
+    if (surface_blas.d_meshDDs) {
+      omp_target_free(surface_blas.d_meshDDs, surface_blas.gpu_id);
     }
-    if (surface_bvh.d_indices) {
-      omp_target_free(surface_bvh.d_indices, surface_bvh.gpu_id);
+    if (surface_blas.d_primRefs) {
+      omp_target_free(surface_blas.d_primRefs, surface_blas.gpu_id);
     }
-    if (surface_bvh.d_primitive_refs) {
-      omp_target_free(surface_bvh.d_primitive_refs, surface_bvh.gpu_id);
+  }
+
+  for (auto& surface_mesh : surface_meshes_) {
+    if (surface_mesh.d_vertices) {
+      omp_target_free(surface_mesh.d_vertices, surface_mesh.gpu_id);
+    }
+    if (surface_mesh.d_indices) {
+      omp_target_free(surface_mesh.d_indices, surface_mesh.gpu_id);
+    }
+    if (surface_mesh.d_primitive_refs) {
+      omp_target_free(surface_mesh.d_primitive_refs, surface_mesh.gpu_id);
     }
   }
 }
@@ -85,7 +94,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   surface_tree_to_volume_[tree] = volume_id;
-  auto& surface_bvh_indices = tree_to_surface_bvh_indices_[tree];
+  auto& surface_blas_indices = tree_to_surface_blas_indices_[tree];
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
 
   for (const auto &surf : volume_surfaces) {
@@ -167,20 +176,55 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
       fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
     }
 
-    CuBQLSurfaceBLAS surface_bvh;
-    surface_bvh.surface = surf;
-    surface_bvh.forward_parent = forward_parent;
-    surface_bvh.reverse_parent = reverse_parent;
-    surface_bvh.bvh = bvh;
-    surface_bvh.d_vertices = d_vertices;
-    surface_bvh.d_indices = d_indices;
-    surface_bvh.d_primitive_refs = d_primitive_refs;
-    surface_bvh.num_vertices = h_vertices.size();
-    surface_bvh.num_faces = num_faces;
-    surface_bvh.gpu_id = gpu_id;
+    CuBQLSurfaceMesh surface_mesh;
+    surface_mesh.dd.surface_id = surf;
+    surface_mesh.dd.forward_parent = forward_parent;
+    surface_mesh.dd.reverse_parent = reverse_parent;
+    surface_mesh.d_vertices = d_vertices;
+    surface_mesh.d_indices = d_indices;
+    surface_mesh.d_primitive_refs = d_primitive_refs;
+    surface_mesh.num_vertices = h_vertices.size();
+    surface_mesh.num_triangles = num_faces;
+    surface_mesh.gpu_id = gpu_id;
 
-    surface_bvh_indices.push_back(surface_bvhs_.size());
-    surface_bvhs_.push_back(surface_bvh);
+    std::vector<CuBQLSurfaceMesh::DD> h_meshDDs {surface_mesh.get_device_data()};
+    auto* d_meshDDs = static_cast<CuBQLSurfaceMesh::DD*>
+      (omp_target_alloc(h_meshDDs.size() * sizeof(CuBQLSurfaceMesh::DD), gpu_id));
+    omp_target_memcpy(d_meshDDs,
+                      h_meshDDs.data(),
+                      h_meshDDs.size() * sizeof(CuBQLSurfaceMesh::DD),
+                      0,
+                      0,
+                      gpu_id,
+                      context.hostID);
+
+    std::vector<CuBQLSurfaceBLAS::PrimRef> h_primRefs;
+    h_primRefs.reserve(num_faces);
+    for (uint32_t primID = 0; primID < num_faces; ++primID) {
+      h_primRefs.push_back({0, static_cast<int>(primID)});
+    }
+
+    auto* d_primRefs = static_cast<CuBQLSurfaceBLAS::PrimRef*>
+      (omp_target_alloc(h_primRefs.size() * sizeof(CuBQLSurfaceBLAS::PrimRef), gpu_id));
+    omp_target_memcpy(d_primRefs,
+                      h_primRefs.data(),
+                      h_primRefs.size() * sizeof(CuBQLSurfaceBLAS::PrimRef),
+                      0,
+                      0,
+                      gpu_id,
+                      context.hostID);
+
+    CuBQLSurfaceBLAS surface_blas;
+    surface_blas.bvh = bvh;
+    surface_blas.d_meshDDs = d_meshDDs;
+    surface_blas.d_primRefs = d_primRefs;
+    surface_blas.num_meshes = h_meshDDs.size();
+    surface_blas.num_prims = h_primRefs.size();
+    surface_blas.gpu_id = gpu_id;
+
+    surface_blas_indices.push_back(surface_blases_.size());
+    surface_meshes_.push_back(surface_mesh);
+    surface_blases_.push_back(surface_blas);
   }
 
   
@@ -259,15 +303,13 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     (omp_target_alloc(sizeof(CubqlHit), gpu_id));
 
   const MeshID query_volume = surface_tree_to_volume_.at(tree);
-  const auto& surface_bvh_indices = tree_to_surface_bvh_indices_.at(tree);
-  for (const auto surface_bvh_index : surface_bvh_indices) {
-    const auto& surface_bvh = surface_bvhs_.at(surface_bvh_index);
+  const auto& surface_blas_indices = tree_to_surface_blas_indices_.at(tree);
+  for (const auto surface_blas_index : surface_blas_indices) {
+    const auto& surface_blas = surface_blases_.at(surface_blas_index);
 
-    cuBQL::bvh3d bvh = surface_bvh.bvh;
-    const cuBQL::vec3d* d_vertices = surface_bvh.d_vertices;
-    const cuBQL::vec3i* d_indices = surface_bvh.d_indices;
-    const MeshID* d_primitive_refs = surface_bvh.d_primitive_refs;
-    const bool reverse_sense = query_volume == surface_bvh.reverse_parent;
+    cuBQL::bvh3d bvh = surface_blas.bvh;
+    const CuBQLSurfaceMesh::DD* d_meshDDs = surface_blas.d_meshDDs;
+    const CuBQLSurfaceBLAS::PrimRef* d_primRefs = surface_blas.d_primRefs;
 
     CubqlHit surface_hit;
     surface_hit.distance = closest_distance + cubql_ray_hit_tolerance(closest_distance);
@@ -284,7 +326,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
 
     #pragma omp target device(gpu_id) \
-      is_device_ptr(d_vertices, d_indices, d_primitive_refs, d_exclude_primitives, d_surface_hit)
+      is_device_ptr(d_meshDDs, d_primRefs, d_exclude_primitives, d_surface_hit)
     {
       cuBQL::ray3d ray;
       ray.origin = ray_origin;
@@ -299,7 +341,9 @@ CuBQLRayTracer::ray_fire(TreeID tree,
       auto xdg_plucker_intersect_prim = [=, &ray]
         (uint32_t prim_id) -> double
       {
-        const MeshID primitive_ref = d_primitive_refs[prim_id];
+        const CuBQLSurfaceBLAS::PrimRef prim_ref = d_primRefs[prim_id];
+        const CuBQLSurfaceMesh::DD mesh = d_meshDDs[prim_ref.meshID];
+        const MeshID primitive_ref = mesh.primitive_refs[prim_ref.primID];
 
         for (int i = 0; i < exclude_count; ++i) {
           if (d_exclude_primitives[i] == primitive_ref) {
@@ -307,14 +351,15 @@ CuBQLRayTracer::ray_fire(TreeID tree,
           }
         }
 
-        const cuBQL::vec3i index = d_indices[prim_id];
+        const cuBQL::vec3i index = mesh.indices[prim_ref.primID];
         cuBQL::vec3d vertices[3] = {
-          d_vertices[index.x],
-          d_vertices[index.y],
-          d_vertices[index.z]
+          mesh.vertices[index.x],
+          mesh.vertices[index.y],
+          mesh.vertices[index.z]
         };
 
         cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
+        const bool reverse_sense = query_volume == mesh.reverse_parent;
         if (reverse_sense) {
           normal = -normal;
         }
@@ -340,6 +385,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                                                       0);
         if (intersection.hit) {
           d_surface_hit->distance = intersection.t;
+          d_surface_hit->surface = mesh.surface_id;
           d_surface_hit->primitive = primitive_ref;
           ray.tMax = intersection.t;
         }
@@ -366,11 +412,11 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     const bool closer_hit = surface_hit.distance < closest_distance - hit_tolerance;
     const bool tied_hit = cuBQL::abst(surface_hit.distance - closest_distance) <= hit_tolerance;
     const bool lower_surface_tie = closest_surface == ID_NONE ||
-      surface_bvh.surface < closest_surface;
+      surface_hit.surface < closest_surface;
     
     if (surface_hit.primitive != ID_NONE && (closer_hit || (tied_hit && lower_surface_tie))) {
       closest_distance = surface_hit.distance;
-      closest_surface = surface_bvh.surface;
+      closest_surface = surface_hit.surface;
       closest_primitive = surface_hit.primitive;
     }
   }
