@@ -63,7 +63,7 @@ public:
                 double& dist) const override;
 
 private:
-  cubql::Context context_;
+  xdg_cubql_backend::Context context_;
 
   struct CuBQLSurfaceBLAS {
     MeshID surface {ID_NONE};
@@ -71,9 +71,9 @@ private:
     MeshID reverse_parent {ID_NONE};
     cuBQL::bvh3d bvh;
 
-    cuBQL::vec3d* d_vertices {nullptr};
-    cuBQL::vec3i* d_indices {nullptr};
-    MeshID* d_primitive_refs {nullptr};
+    xdg_cubql_backend::AutoUploadArray<cuBQL::vec3d> vertices;
+    xdg_cubql_backend::AutoUploadArray<cuBQL::vec3i> indices;
+    xdg_cubql_backend::AutoUploadArray<MeshID> primitive_refs;
 
     uint32_t num_vertices {0};
     uint32_t num_faces {0};
