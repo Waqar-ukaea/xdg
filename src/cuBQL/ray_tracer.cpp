@@ -1,6 +1,7 @@
 #include "xdg/cuBQL/ray_tracer.h"
 #include "xdg/error.h"
 #include "xdg/geometry/plucker.h"
+#include "xdg/available_device_probe.h"
 
 #include <omp.h>
 #include "cuBQL/builder/omp.h"
@@ -17,7 +18,12 @@ static inline __cubql_both double cubql_ray_hit_tolerance(double t)
   return tolerance * (1.0 + cuBQL::abst(t));
 }
 
-CuBQLRayTracer::CuBQLRayTracer() = default;
+CuBQLRayTracer::CuBQLRayTracer()
+{
+  if (!system_has_omp_target_device()) {
+    fatal_error("No OpenMP target capable device found; cannot initialize cuBQL ray tracer.");
+  }
+}
 
 CuBQLRayTracer::~CuBQLRayTracer()
 {
