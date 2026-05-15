@@ -8,18 +8,10 @@
 
 #include "xdg/constants.h"
 #include "xdg/geometry_data.h"
+#include "xdg/cuBQL/triangles.h"
 #include "xdg/mesh_manager_interface.h"
 #include "xdg/ray.h"
 #include "xdg/ray_tracing_interface.h"
-
-// Guards to prevent CUDA headers from being included in host code, which causes failed compilation with LLVM-clang
-#if defined(__CUDA_ARCH__) && !defined(__CUDACC__)
-#undef __CUDA_ARCH__
-#endif
-
-#include "cuBQL/bvh.h"
-
-
 
 namespace xdg {
 
@@ -71,7 +63,9 @@ public:
                 double& dist) const override;
 
 private:
-  struct CuBQLSurfaceBVH {
+  cubql::Context context_;
+
+  struct CuBQLSurfaceBLAS {
     MeshID surface {ID_NONE};
     MeshID forward_parent {ID_NONE};
     MeshID reverse_parent {ID_NONE};
@@ -85,6 +79,7 @@ private:
     uint32_t num_faces {0};
     int gpu_id {0};
   };
+  
 
   struct CubqlHit {
     double distance {INFTY};
@@ -92,7 +87,7 @@ private:
     MeshID primitive {ID_NONE};
   };
 
-  std::vector<CuBQLSurfaceBVH> surface_bvhs_;
+  std::vector<CuBQLSurfaceBLAS> surface_bvhs_;
   std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_bvh_indices_;
   std::unordered_map<TreeID, MeshID> surface_tree_to_volume_;
 };

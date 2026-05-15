@@ -23,6 +23,9 @@ CuBQLRayTracer::CuBQLRayTracer()
   if (!system_has_omp_target_device()) {
     fatal_error("No OpenMP target capable device found; cannot initialize cuBQL ray tracer.");
   }
+
+  context_.gpuID = 0; // TODO - support selecting among multiple OpenMP target devices.
+  context_.hostID = omp_get_initial_device();
 }
 
 CuBQLRayTracer::~CuBQLRayTracer()
@@ -64,8 +67,8 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
                                     MeshID volume_id)
 {
 
-  int gpu_id = 0; // TODO - how to manage GPU IDs in a multi-GPU system?
-  int host_id = omp_get_initial_device();
+  const auto& context = context_;
+  const int gpu_id = context.gpuID;
 
 
   // cuBQL::box3d *d_boxes = nullptr; // box3d is an alias for box_t<double, 3>
@@ -116,17 +119,17 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     auto* d_vertices = static_cast<cuBQL::vec3d*>
       (omp_target_alloc(h_vertices.size() * sizeof(cuBQL::vec3d), gpu_id));
     omp_target_memcpy(d_vertices, h_vertices.data(), 
-      h_vertices.size() * sizeof(cuBQL::vec3d), 0, 0, gpu_id, host_id);
+      h_vertices.size() * sizeof(cuBQL::vec3d), 0, 0, gpu_id, context.hostID);
 
     auto* d_indices = static_cast<cuBQL::vec3i*>
       (omp_target_alloc(h_indices.size() * sizeof(cuBQL::vec3i), gpu_id));
     omp_target_memcpy(d_indices, h_indices.data(), 
-      h_indices.size() * sizeof(cuBQL::vec3i), 0, 0, gpu_id, host_id);
+      h_indices.size() * sizeof(cuBQL::vec3i), 0, 0, gpu_id, context.hostID);
 
     auto* d_primitive_refs = static_cast<MeshID*>
       (omp_target_alloc(h_primitive_refs.size() * sizeof(MeshID), gpu_id));
     omp_target_memcpy(d_primitive_refs, h_primitive_refs.data(),
-      h_primitive_refs.size() * sizeof(MeshID), 0, 0, gpu_id, host_id);
+      h_primitive_refs.size() * sizeof(MeshID), 0, 0, gpu_id, context.hostID);
 
     // Create device storage for triangle AABBs to be computed in parallel on GPU
     auto* d_aabbs = static_cast<cuBQL::box3d*>
@@ -160,15 +163,14 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     omp_target_free(d_aabbs, gpu_id);
 
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
-
-    CuBQLSurfaceBVH surface_bvh;
-
-    surface_bvh.surface = surf;
-    surface_bvh.forward_parent = forward_parent;
-    surface_bvh.reverse_parent = reverse_parent;
     if (volume_id != forward_parent && volume_id != reverse_parent) {
       fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
     }
+
+    CuBQLSurfaceBLAS surface_bvh;
+    surface_bvh.surface = surf;
+    surface_bvh.forward_parent = forward_parent;
+    surface_bvh.reverse_parent = reverse_parent;
     surface_bvh.bvh = bvh;
     surface_bvh.d_vertices = d_vertices;
     surface_bvh.d_indices = d_indices;
@@ -180,6 +182,8 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     surface_bvh_indices.push_back(surface_bvhs_.size());
     surface_bvhs_.push_back(surface_bvh);
   }
+
+  
   return tree;
 }
 
@@ -230,8 +234,8 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                          HitOrientation hitOrientation,
                          std::vector<MeshID>* const exclude_primitives)
 {
-  int gpu_id = 0; // TODO - how to manage GPU IDs in a multi-GPU system?
-  int host_id = omp_get_initial_device();
+  const auto& context = context_;
+  const int gpu_id = context.gpuID;
 
   MeshID* d_exclude_primitives = nullptr;
   int exclude_count = 0;
@@ -245,7 +249,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                       0,
                       0,
                       gpu_id,
-                      host_id);
+                      context.hostID);
   }
 
   double closest_distance = tmax;
@@ -273,7 +277,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                       0,
                       0,
                       gpu_id,
-                      host_id);
+                      context.hostID);
 
     const int orientation = static_cast<int>(hitOrientation);
     const cuBQL::vec3d ray_origin(origin.x, origin.y, origin.z);
@@ -352,7 +356,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                       sizeof(CubqlHit),
                       0,
                       0,
-                      host_id,
+                      context.hostID,
                       gpu_id);
     
     // Temporary cuBQL-only closest-hit reduction while each surface BVH is queried
