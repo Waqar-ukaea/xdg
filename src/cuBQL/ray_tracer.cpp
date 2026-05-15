@@ -34,9 +34,6 @@ CuBQLRayTracer::~CuBQLRayTracer()
     if (surface_bvh.d_indices) {
       omp_target_free(surface_bvh.d_indices, surface_bvh.gpu_id);
     }
-    if (surface_bvh.d_normals) {
-      omp_target_free(surface_bvh.d_normals, surface_bvh.gpu_id);
-    }
     if (surface_bvh.d_primitive_refs) {
       omp_target_free(surface_bvh.d_primitive_refs, surface_bvh.gpu_id);
     }
@@ -78,6 +75,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
 
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
+  surface_tree_to_volume_[tree] = volume_id;
   auto& surface_bvh_indices = tree_to_surface_bvh_indices_[tree];
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
 
@@ -104,23 +102,8 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     std::vector<MeshID> h_primitive_refs;
     h_primitive_refs.reserve(num_faces);
 
-    std::vector<cuBQL::vec3d> h_normals;
-    h_normals.reserve(num_faces);
-
-    auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
     for (const auto& face : mesh_manager->get_surface_faces(surf)) {
       h_primitive_refs.push_back(face);
-
-      // TODO: This pre-orients normals for the current volume tree. If cuBQL
-      // starts reusing a single surface BVH/BLAS across both parent volumes,
-      // normals must be flipped at intersection time based on the queried volume.
-      auto normal = mesh_manager->face_normal(face);
-      if (volume_id == reverse_parent) {
-        normal = -normal;
-      } else if (volume_id != forward_parent) {
-        fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
-      }
-      h_normals.emplace_back(normal.x, normal.y, normal.z);
     }
 
     // copy vertices and indices to device
@@ -133,11 +116,6 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
       (omp_target_alloc(h_indices.size() * sizeof(cuBQL::vec3i), gpu_id));
     omp_target_memcpy(d_indices, h_indices.data(), 
       h_indices.size() * sizeof(cuBQL::vec3i), 0, 0, gpu_id, host_id);
-
-    auto* d_normals = static_cast<cuBQL::vec3d*>
-      (omp_target_alloc(h_normals.size() * sizeof(cuBQL::vec3d), gpu_id));
-    omp_target_memcpy(d_normals, h_normals.data(),
-      h_normals.size() * sizeof(cuBQL::vec3d), 0, 0, gpu_id, host_id);
 
     auto* d_primitive_refs = static_cast<MeshID*>
       (omp_target_alloc(h_primitive_refs.size() * sizeof(MeshID), gpu_id));
@@ -175,12 +153,19 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
 
     omp_target_free(d_aabbs, gpu_id);
 
+    auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
+
     CuBQLSurfaceBVH surface_bvh;
+
     surface_bvh.surface = surf;
+    surface_bvh.forward_parent = forward_parent;
+    surface_bvh.reverse_parent = reverse_parent;
+    if (volume_id != forward_parent && volume_id != reverse_parent) {
+      fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
+    }
     surface_bvh.bvh = bvh;
     surface_bvh.d_vertices = d_vertices;
     surface_bvh.d_indices = d_indices;
-    surface_bvh.d_normals = d_normals;
     surface_bvh.d_primitive_refs = d_primitive_refs;
     surface_bvh.num_vertices = h_vertices.size();
     surface_bvh.num_faces = num_faces;
@@ -202,12 +187,12 @@ CuBQLRayTracer::create_element_tree(const std::shared_ptr<MeshManager>&,
 
 void CuBQLRayTracer::create_global_surface_tree()
 {
-  fatal_error("Global surface trees not currently supported with cuBQL ray tracer");
+  warning("Global surface trees not currently supported with cuBQL ray tracer");
 }
 
 void CuBQLRayTracer::create_global_element_tree()
 {
-  fatal_error("Global element trees not currently supported with cuBQL ray tracer");
+  warning("Global element trees not currently supported with cuBQL ray tracer");
 }
 
 MeshID CuBQLRayTracer::find_element(const Position&) const
@@ -263,6 +248,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
   auto* d_surface_hit = static_cast<CubqlHit*>
     (omp_target_alloc(sizeof(CubqlHit), gpu_id));
 
+  const MeshID query_volume = surface_tree_to_volume_.at(tree);
   const auto& surface_bvh_indices = tree_to_surface_bvh_indices_.at(tree);
   for (const auto surface_bvh_index : surface_bvh_indices) {
     const auto& surface_bvh = surface_bvhs_.at(surface_bvh_index);
@@ -270,8 +256,8 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     cuBQL::bvh3d bvh = surface_bvh.bvh;
     const cuBQL::vec3d* d_vertices = surface_bvh.d_vertices;
     const cuBQL::vec3i* d_indices = surface_bvh.d_indices;
-    const cuBQL::vec3d* d_normals = surface_bvh.d_normals;
     const MeshID* d_primitive_refs = surface_bvh.d_primitive_refs;
+    const bool reverse_sense = query_volume == surface_bvh.reverse_parent;
 
     CubqlHit surface_hit;
     surface_hit.distance = closest_distance + cubql_ray_hit_tolerance(closest_distance);
@@ -288,7 +274,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
 
     #pragma omp target device(gpu_id) \
-      is_device_ptr(d_vertices, d_indices, d_normals, d_primitive_refs, d_exclude_primitives, d_surface_hit)
+      is_device_ptr(d_vertices, d_indices, d_primitive_refs, d_exclude_primitives, d_surface_hit)
     {
       cuBQL::ray3d ray;
       ray.origin = ray_origin;
@@ -318,7 +304,12 @@ CuBQLRayTracer::ray_fire(TreeID tree,
           d_vertices[index.z]
         };
 
-        const double normal_dot_direction = dot(d_normals[prim_id], ray.direction);
+        cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
+        if (reverse_sense) {
+          normal = -normal;
+        }
+
+        const double normal_dot_direction = dot(normal, ray.direction);
         bool culled = false;
         if (orientation == static_cast<int>(HitOrientation::EXITING)) {
           culled = normal_dot_direction < 0.0;
