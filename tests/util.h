@@ -88,12 +88,6 @@ inline void check_ray_tracer_supported(xdg::RTLibrary rt) {
   if (!ray_tracer_available(rt)) {
     SKIP(fmt::format("{} backend unavailable; skipping.", xdg::RT_LIB_TO_STR.at(rt)));
   }
-  #endif
-  #ifndef XDG_ENABLE_CUBQL
-  if(!ray_tracer_available(xdg::RTLibrary::CUBQL)) {
-    SKIP(fmt::format("{} backend unavailable; skipping.", xdg::RT_LIB_TO_STR.at(rt)));
-  }
-  #endif
 }
 
 inline void check_mesh_library_supported(xdg::MeshLibrary mesh) {
