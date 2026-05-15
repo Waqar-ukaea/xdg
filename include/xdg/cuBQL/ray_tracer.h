@@ -73,11 +73,12 @@ public:
 private:
   struct CuBQLSurfaceBVH {
     MeshID surface {ID_NONE};
+    MeshID forward_parent {ID_NONE};
+    MeshID reverse_parent {ID_NONE};
     cuBQL::bvh3d bvh;
 
     cuBQL::vec3d* d_vertices {nullptr};
     cuBQL::vec3i* d_indices {nullptr};
-    cuBQL::vec3d* d_normals {nullptr};
     MeshID* d_primitive_refs {nullptr};
 
     uint32_t num_vertices {0};
@@ -93,6 +94,7 @@ private:
 
   std::vector<CuBQLSurfaceBVH> surface_bvhs_;
   std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_bvh_indices_;
+  std::unordered_map<TreeID, MeshID> surface_tree_to_volume_;
 };
 
 } // namespace xdg
