@@ -65,30 +65,15 @@ public:
 private:
   cubql::Context context_;
 
-  struct CuBQLSurfaceBLAS {
-    MeshID surface {ID_NONE};
-    MeshID forward_parent {ID_NONE};
-    MeshID reverse_parent {ID_NONE};
-    cuBQL::bvh3d bvh;
-
-    cuBQL::vec3d* d_vertices {nullptr};
-    cuBQL::vec3i* d_indices {nullptr};
-    MeshID* d_primitive_refs {nullptr};
-
-    uint32_t num_vertices {0};
-    uint32_t num_faces {0};
-    int gpu_id {0};
-  };
-  
-
   struct CubqlHit {
     double distance {INFTY};
     MeshID surface {ID_NONE};
     MeshID primitive {ID_NONE};
   };
 
-  std::vector<CuBQLSurfaceBLAS> surface_bvhs_;
-  std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_bvh_indices_;
+  std::vector<CuBQLSurfaceMesh> surface_meshes_;
+  std::vector<CuBQLSurfaceBLAS> surface_blases_;
+  std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_blas_indices_;
   std::unordered_map<TreeID, MeshID> surface_tree_to_volume_;
 };
 
