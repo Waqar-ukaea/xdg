@@ -8,7 +8,7 @@
 #include "xdg/constants.h"
 #include "xdg/ray_tracers.h"
 #include "xdg/mesh_managers.h"
-#include "xdg/gprt/vulkan_probe.h"
+#include "xdg/available_device_probe.h"
 
 namespace xdg::test {
 
@@ -52,7 +52,7 @@ inline bool ray_tracer_available(xdg::RTLibrary rt) {
 
     case xdg::RTLibrary::CUBQL:
     #ifdef XDG_ENABLE_CUBQL
-      return true;
+      return system_has_omp_target_device();
     #else
       return false;
     #endif
