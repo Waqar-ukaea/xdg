@@ -12,12 +12,6 @@
 
 namespace xdg {
 
-static inline __cubql_both double cubql_ray_hit_tolerance(double t)
-{
-  constexpr double tolerance = 64.0 * 2.2204460492503131e-16;
-  return tolerance * (1.0 + cuBQL::abst(t));
-}
-
 CuBQLRayTracer::CuBQLRayTracer()
 {
   if (!system_has_omp_target_device()) {
@@ -30,31 +24,8 @@ CuBQLRayTracer::CuBQLRayTracer()
 
 CuBQLRayTracer::~CuBQLRayTracer()
 {
-  for (auto& surface_blas : surface_blases_) {
-    cuBQL::omp::Context context(surface_blas.gpu_id);
-
-    if (surface_blas.bvh.nodes || surface_blas.bvh.primIDs) {
-      cuBQL::omp::freeBVH(surface_blas.bvh, &context);
-    }
-
-    if (surface_blas.d_meshDDs) {
-      omp_target_free(surface_blas.d_meshDDs, surface_blas.gpu_id);
-    }
-    if (surface_blas.d_primRefs) {
-      omp_target_free(surface_blas.d_primRefs, surface_blas.gpu_id);
-    }
-  }
-
-  for (auto& surface_mesh : surface_meshes_) {
-    if (surface_mesh.d_vertices) {
-      omp_target_free(surface_mesh.d_vertices, surface_mesh.gpu_id);
-    }
-    if (surface_mesh.d_indices) {
-      omp_target_free(surface_mesh.d_indices, surface_mesh.gpu_id);
-    }
-    if (surface_mesh.d_primitive_refs) {
-      omp_target_free(surface_mesh.d_primitive_refs, surface_mesh.gpu_id);
-    }
+  for (auto& [tree, tlas] : tree_to_volume_tlas_) {
+    tlas.release();
   }
 }
 
@@ -94,8 +65,13 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   surface_tree_to_volume_[tree] = volume_id;
-  auto& surface_blas_indices = tree_to_surface_blas_indices_[tree];
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
+  std::vector<cuBQL::box3d> h_tlas_boxes;
+  std::vector<CuBQLVolumeTLAS::SurfaceInstanceDD> h_surface_instances;
+  std::vector<CuBQLSurfaceBLAS> h_surface_blases;
+  h_tlas_boxes.reserve(volume_surfaces.size());
+  h_surface_instances.reserve(volume_surfaces.size());
+  h_surface_blases.reserve(volume_surfaces.size());
 
   for (const auto &surf : volume_surfaces) {
     auto num_faces = mesh_manager->num_surface_faces(surf);
@@ -117,12 +93,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     }
 
     // Get storage for primitive refs so a hit can be mapped back to a mesh face.
-    std::vector<MeshID> h_primitive_refs;
-    h_primitive_refs.reserve(num_faces);
-
-    for (const auto& face : mesh_manager->get_surface_faces(surf)) {
-      h_primitive_refs.push_back(face);
-    }
+    std::vector<MeshID> h_primitive_refs = mesh_manager->get_surface_faces(surf);
 
     // copy vertices and indices to device
     auto* d_vertices = static_cast<cuBQL::vec3d*>
@@ -177,9 +148,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     }
 
     CuBQLSurfaceMesh surface_mesh;
-    surface_mesh.dd.surface_id = surf;
-    surface_mesh.dd.forward_parent = forward_parent;
-    surface_mesh.dd.reverse_parent = reverse_parent;
+    surface_mesh.surface_id = surf;
     surface_mesh.d_vertices = d_vertices;
     surface_mesh.d_indices = d_indices;
     surface_mesh.d_primitive_refs = d_primitive_refs;
@@ -187,46 +156,68 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     surface_mesh.num_triangles = num_faces;
     surface_mesh.gpu_id = gpu_id;
 
-    std::vector<CuBQLSurfaceMesh::DD> h_meshDDs {surface_mesh.get_device_data()};
-    auto* d_meshDDs = static_cast<CuBQLSurfaceMesh::DD*>
-      (omp_target_alloc(h_meshDDs.size() * sizeof(CuBQLSurfaceMesh::DD), gpu_id));
-    omp_target_memcpy(d_meshDDs,
-                      h_meshDDs.data(),
-                      h_meshDDs.size() * sizeof(CuBQLSurfaceMesh::DD),
-                      0,
-                      0,
-                      gpu_id,
-                      context.hostID);
-
-    std::vector<CuBQLSurfaceBLAS::PrimRef> h_primRefs;
-    h_primRefs.reserve(num_faces);
-    for (uint32_t primID = 0; primID < num_faces; ++primID) {
-      h_primRefs.push_back({0, static_cast<int>(primID)});
-    }
-
-    auto* d_primRefs = static_cast<CuBQLSurfaceBLAS::PrimRef*>
-      (omp_target_alloc(h_primRefs.size() * sizeof(CuBQLSurfaceBLAS::PrimRef), gpu_id));
-    omp_target_memcpy(d_primRefs,
-                      h_primRefs.data(),
-                      h_primRefs.size() * sizeof(CuBQLSurfaceBLAS::PrimRef),
-                      0,
-                      0,
-                      gpu_id,
-                      context.hostID);
-
     CuBQLSurfaceBLAS surface_blas;
     surface_blas.bvh = bvh;
-    surface_blas.d_meshDDs = d_meshDDs;
-    surface_blas.d_primRefs = d_primRefs;
-    surface_blas.num_meshes = h_meshDDs.size();
-    surface_blas.num_prims = h_primRefs.size();
+    surface_blas.mesh = surface_mesh;
+    surface_blas.num_prims = num_faces;
     surface_blas.gpu_id = gpu_id;
 
-    surface_blas_indices.push_back(surface_blases_.size());
-    surface_meshes_.push_back(surface_mesh);
-    surface_blases_.push_back(surface_blas);
+    // Store BLAS bounding boxes to build TLAS
+    const auto surface_bounding_box = mesh_manager->surface_bounding_box(surf);
+    cuBQL::box3d surface_bounds;
+    surface_bounds.lower = cuBQL::vec3d(surface_bounding_box.min_x,
+                                        surface_bounding_box.min_y,
+                                        surface_bounding_box.min_z);
+    surface_bounds.upper = cuBQL::vec3d(surface_bounding_box.max_x,
+                                        surface_bounding_box.max_y,
+                                        surface_bounding_box.max_z);
+
+    h_tlas_boxes.push_back(surface_bounds);
+    h_surface_instances.push_back({surface_blas.get_device_data()});
+    h_surface_blases.push_back(surface_blas);
   }
 
+  if (h_surface_instances.empty()) {
+    fatal_error("Volume {} has no surfaces; cannot build cuBQL surface tree", volume_id);
+  }
+
+  auto* d_tlas_boxes = static_cast<cuBQL::box3d*>
+    (omp_target_alloc(h_tlas_boxes.size() * sizeof(cuBQL::box3d), gpu_id));
+  omp_target_memcpy(d_tlas_boxes,
+                    h_tlas_boxes.data(),
+                    h_tlas_boxes.size() * sizeof(cuBQL::box3d),
+                    0,
+                    0,
+                    gpu_id,
+                    context.hostID);
+
+  auto* d_surface_instances = static_cast<CuBQLVolumeTLAS::SurfaceInstanceDD*>
+    (omp_target_alloc(h_surface_instances.size() * sizeof(CuBQLVolumeTLAS::SurfaceInstanceDD), gpu_id));
+  omp_target_memcpy(d_surface_instances,
+                    h_surface_instances.data(),
+                    h_surface_instances.size() * sizeof(CuBQLVolumeTLAS::SurfaceInstanceDD),
+                    0,
+                    0,
+                    gpu_id,
+                    context.hostID);
+
+  cuBQL::BuildConfig tlasBuildParams(1);
+  tlasBuildParams.maxAllowedLeafSize = 1;
+
+  CuBQLVolumeTLAS volume_tlas;
+  volume_tlas.num_surface_instances = static_cast<uint32_t>(h_surface_instances.size());
+  volume_tlas.gpu_id = gpu_id;
+  volume_tlas.d_surface_instances = d_surface_instances;
+  volume_tlas.surface_blases = std::move(h_surface_blases);
+  cuBQL::build_omp_target(volume_tlas.bvh,
+                          d_tlas_boxes,
+                          volume_tlas.num_surface_instances,
+                          tlasBuildParams,
+                          gpu_id);
+
+  omp_target_free(d_tlas_boxes, gpu_id);
+
+  tree_to_volume_tlas_.emplace(tree, std::move(volume_tlas));
   
   return tree;
 }
@@ -302,123 +293,126 @@ CuBQLRayTracer::ray_fire(TreeID tree,
   auto* d_surface_hit = static_cast<CubqlHit*>
     (omp_target_alloc(sizeof(CubqlHit), gpu_id));
 
-  const MeshID query_volume = surface_tree_to_volume_.at(tree);
-  const auto& surface_blas_indices = tree_to_surface_blas_indices_.at(tree);
-  for (const auto surface_blas_index : surface_blas_indices) {
-    const auto& surface_blas = surface_blases_.at(surface_blas_index);
+  const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
+  const auto volume_tlas_dd = volume_tlas.get_device_data();
 
-    cuBQL::bvh3d bvh = surface_blas.bvh;
-    const CuBQLSurfaceMesh::DD* d_meshDDs = surface_blas.d_meshDDs;
-    const CuBQLSurfaceBLAS::PrimRef* d_primRefs = surface_blas.d_primRefs;
+  CubqlHit surface_hit;
+  surface_hit.distance = tmax;
+  omp_target_memcpy(d_surface_hit,
+                    &surface_hit,
+                    sizeof(CubqlHit),
+                    0,
+                    0,
+                    gpu_id,
+                    context.hostID);
 
-    CubqlHit surface_hit;
-    surface_hit.distance = closest_distance + cubql_ray_hit_tolerance(closest_distance);
-    omp_target_memcpy(d_surface_hit,
-                      &surface_hit,
-                      sizeof(CubqlHit),
-                      0,
-                      0,
-                      gpu_id,
-                      context.hostID);
+  const int orientation = static_cast<int>(hitOrientation);
+  const cuBQL::vec3d ray_origin(origin.x, origin.y, origin.z);
+  const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
 
-    const int orientation = static_cast<int>(hitOrientation);
-    const cuBQL::vec3d ray_origin(origin.x, origin.y, origin.z);
-    const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
+  #pragma omp target device(gpu_id) \
+    is_device_ptr(d_exclude_primitives, d_surface_hit)
+  {
+    cuBQL::ray3d world_ray;
+    world_ray.origin = ray_origin;
+    world_ray.direction = ray_direction;
+    world_ray.tMin = 0.0;
+    world_ray.tMax = d_surface_hit->distance;
 
-    #pragma omp target device(gpu_id) \
-      is_device_ptr(d_meshDDs, d_primRefs, d_exclude_primitives, d_surface_hit)
+    CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
+
+    // lambda to go from tlas->blas
+    auto enter_blas = [=, &surface_instance, &world_ray]
+      (cuBQL::ray3d& out_ray, cuBQL::bvh3d& out_bvh, int instance_id)
     {
-      cuBQL::ray3d ray;
-      ray.origin = ray_origin;
-      ray.direction = ray_direction;
-      ray.tMin = 0.0;
-      ray.tMax = d_surface_hit->distance;
+      surface_instance = volume_tlas_dd.surface_instances[instance_id];
+      out_ray = world_ray; // No ray transformation because everything is in world coords with xdg
+      out_bvh = surface_instance.surface_blas.bvh; // Get the BLAS for the surface instance we hit in the TLAS
+    };
 
-      // lambda for primitive intersection
-      // - culls excluded primitives
-      // - culls backfacing or frontfacing hits based on hitOrientation
-      // - calls plucker intersection 
-      auto xdg_plucker_intersect_prim = [=, &ray]
-        (uint32_t prim_id) -> double
-      {
-        const CuBQLSurfaceBLAS::PrimRef prim_ref = d_primRefs[prim_id];
-        const CuBQLSurfaceMesh::DD mesh = d_meshDDs[prim_ref.meshID];
-        const MeshID primitive_ref = mesh.primitive_refs[prim_ref.primID];
 
-        for (int i = 0; i < exclude_count; ++i) {
-          if (d_exclude_primitives[i] == primitive_ref) {
-            return ray.tMax;
-          }
+    // lambda for primitive intersection
+    // - culls excluded primitives
+    // - culls backfacing or frontfacing hits based on hitOrientation
+    // - calls plucker intersection 
+    auto xdg_plucker_intersect_prim = [=, &world_ray, &surface_instance]
+      (uint32_t prim_id) -> double
+    {
+      const CuBQLSurfaceMesh::DD mesh = surface_instance.surface_blas.mesh;
+      const MeshID primitive_ref = mesh.primitive_refs[prim_id];
+
+      for (int i = 0; i < exclude_count; ++i) {
+        if (d_exclude_primitives[i] == primitive_ref) {
+          return world_ray.tMax;
         }
+      }
 
-        const cuBQL::vec3i index = mesh.indices[prim_ref.primID];
-        cuBQL::vec3d vertices[3] = {
-          mesh.vertices[index.x],
-          mesh.vertices[index.y],
-          mesh.vertices[index.z]
-        };
-
-        cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
-        const bool reverse_sense = query_volume == mesh.reverse_parent;
-        if (reverse_sense) {
-          normal = -normal;
-        }
-
-        const double normal_dot_direction = dot(normal, ray.direction);
-        bool culled = false;
-        if (orientation == static_cast<int>(HitOrientation::EXITING)) {
-          culled = normal_dot_direction < 0.0;
-        } else if (orientation == static_cast<int>(HitOrientation::ENTERING)) {
-          culled = normal_dot_direction >= 0.0;
-        }
-        if (culled) {
-          return ray.tMax;
-        }
-
-        // Reuse same plucker intersection function applied to other ray tracers
-        auto intersection = plucker_ray_tri_intersect(vertices,
-                                                      ray.origin,
-                                                      ray.direction,
-                                                      ray.tMax,
-                                                      ray.tMin,
-                                                      false,
-                                                      0);
-        if (intersection.hit) {
-          d_surface_hit->distance = intersection.t;
-          d_surface_hit->surface = mesh.surface_id;
-          d_surface_hit->primitive = primitive_ref;
-          ray.tMax = intersection.t;
-        }
-
-        return ray.tMax;
+      const cuBQL::vec3i index = mesh.indices[prim_id];
+      cuBQL::vec3d vertices[3] = {
+        mesh.vertices[index.x],
+        mesh.vertices[index.y],
+        mesh.vertices[index.z]
       };
 
-      // Traversal template from cuBQL 
-      cuBQL::shrinkingRayQuery::forEachPrim(xdg_plucker_intersect_prim, bvh, ray);
-    }
+      cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
+      if (surface_instance.reverse_sense) {
+        normal = -normal;
+      }
 
-    omp_target_memcpy(&surface_hit,
-                      d_surface_hit,
-                      sizeof(CubqlHit),
-                      0,
-                      0,
-                      context.hostID,
-                      gpu_id);
+      const double normal_dot_direction = dot(normal, world_ray.direction);
+      bool culled = false;
+      if (orientation == static_cast<int>(HitOrientation::EXITING)) {
+        culled = normal_dot_direction < 0.0;
+      } else if (orientation == static_cast<int>(HitOrientation::ENTERING)) {
+        culled = normal_dot_direction >= 0.0;
+      }
+      if (culled) {
+        return world_ray.tMax;
+      }
+
+      // Reuse same plucker intersection function applied to other ray tracers
+      auto intersection = plucker_ray_tri_intersect(vertices,
+                                                    world_ray.origin,
+                                                    world_ray.direction,
+                                                    world_ray.tMax,
+                                                    world_ray.tMin,
+                                                    false,
+                                                    0);
+      if (intersection.hit) {
+        d_surface_hit->distance = intersection.t;
+        d_surface_hit->surface = mesh.surface_id;
+        d_surface_hit->primitive = primitive_ref;
+        world_ray.tMax = intersection.t;
+      }
+
+      return world_ray.tMax;
+    };
+
+    // We must provide the lambda to run on exit but it is empty for our use case 
+    // since there is no need for cleanup or transforming the ray back to world space
+    auto leave_blas = []() -> void {}; 
+
+    // Two level Traversal template from cuBQL 
+    cuBQL::shrinkingRayQuery::twoLevel::forEachPrim(enter_blas,
+                                                    leave_blas,
+                                                    xdg_plucker_intersect_prim,
+                                                    volume_tlas_dd.bvh,
+                                                    world_ray);
     
-    // Temporary cuBQL-only closest-hit reduction while each surface BVH is queried
-    // independently. Embree/GPRT delegate this to a single scene/TLAS traversal;
-    // once cuBQL does the same, this tolerance/tie-break logic should go away.
-    const double hit_tolerance = cubql_ray_hit_tolerance(closest_distance);
-    const bool closer_hit = surface_hit.distance < closest_distance - hit_tolerance;
-    const bool tied_hit = cuBQL::abst(surface_hit.distance - closest_distance) <= hit_tolerance;
-    const bool lower_surface_tie = closest_surface == ID_NONE ||
-      surface_hit.surface < closest_surface;
-    
-    if (surface_hit.primitive != ID_NONE && (closer_hit || (tied_hit && lower_surface_tie))) {
-      closest_distance = surface_hit.distance;
-      closest_surface = surface_hit.surface;
-      closest_primitive = surface_hit.primitive;
-    }
+  }
+
+  omp_target_memcpy(&surface_hit,
+                    d_surface_hit,
+                    sizeof(CubqlHit),
+                    0,
+                    0,
+                    context.hostID,
+                    gpu_id);
+  
+  if (surface_hit.primitive != ID_NONE) {
+    closest_distance = surface_hit.distance;
+    closest_surface = surface_hit.surface;
+    closest_primitive = surface_hit.primitive;
   }
 
   omp_target_free(d_surface_hit, gpu_id);
