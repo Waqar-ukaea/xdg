@@ -143,9 +143,6 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     omp_target_free(d_aabbs, gpu_id);
 
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
-    if (volume_id != forward_parent && volume_id != reverse_parent) {
-      fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
-    }
 
     CuBQLSurfaceMesh surface_mesh;
     surface_mesh.surface_id = surf;
@@ -172,8 +169,20 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
                                         surface_bounding_box.max_y,
                                         surface_bounding_box.max_z);
 
+    CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
+    surface_instance.surface_blas = surface_blas.get_device_data();
+
+    // Sense setting for each surface instance in the TLAS
+    if (volume_id == forward_parent) {
+      surface_instance.reverse_sense = false;
+    } else if (volume_id == reverse_parent) {
+      surface_instance.reverse_sense = true;
+    } else {
+      fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
+    }
+
     h_tlas_boxes.push_back(surface_bounds);
-    h_surface_instances.push_back({surface_blas.get_device_data()});
+    h_surface_instances.push_back(surface_instance);
     h_surface_blases.push_back(surface_blas);
   }
 
