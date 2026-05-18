@@ -240,6 +240,7 @@ endif()
 
 if (XDG_ENABLE_CUBQL)
 list(APPEND xdg_sources
+src/cuBQL/triangles.cpp
 src/cuBQL/ray_tracer.cpp
 )
 

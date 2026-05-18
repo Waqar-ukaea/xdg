@@ -71,9 +71,7 @@ private:
     MeshID primitive {ID_NONE};
   };
 
-  std::vector<CuBQLSurfaceMesh> surface_meshes_;
-  std::vector<CuBQLSurfaceBLAS> surface_blases_;
-  std::unordered_map<TreeID, std::vector<size_t>> tree_to_surface_blas_indices_;
+  std::unordered_map<TreeID, CuBQLVolumeTLAS> tree_to_volume_tlas_;
   std::unordered_map<TreeID, MeshID> surface_tree_to_volume_;
 };
 
