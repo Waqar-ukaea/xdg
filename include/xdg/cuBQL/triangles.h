@@ -112,7 +112,6 @@ struct CuBQLVolumeTLAS {
 
   cuBQL::bvh3d bvh; // TLAS host handle
   SurfaceInstanceDD* d_surface_instances {nullptr};
-  std::vector<CuBQLSurfaceBLAS> surface_blases;
 
   uint32_t num_surface_instances {0};
   int gpu_id {0};

@@ -63,6 +63,9 @@ public:
                 double& dist) const override;
 
 private:
+  CuBQLSurfaceBLAS
+  register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id);
+
   cubql::Context context_;
 
   struct CubqlHit {
@@ -72,7 +75,7 @@ private:
   };
 
   std::unordered_map<TreeID, CuBQLVolumeTLAS> tree_to_volume_tlas_;
-  std::unordered_map<TreeID, MeshID> surface_tree_to_volume_;
+  std::unordered_map<MeshID, CuBQLSurfaceBLAS> surface_to_blas_map_;
 };
 
 } // namespace xdg

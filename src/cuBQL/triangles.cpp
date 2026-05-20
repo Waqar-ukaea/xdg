@@ -47,9 +47,6 @@ void CuBQLVolumeTLAS::release()
     omp_target_free(d_surface_instances, gpu_id);
     d_surface_instances = nullptr;
   }
-  for (auto& surface_blas : surface_blases) {
-    surface_blas.release();
-  }
 }
 
 } // namespace xdg
