@@ -1,4 +1,5 @@
 #include "xdg/cuBQL/ray_tracer.h"
+#include "xdg/cuBQL/intersection.h"
 #include "xdg/error.h"
 #include "xdg/geometry/plucker.h"
 #include "xdg/available_device_probe.h"
@@ -287,25 +288,15 @@ MeshID CuBQLRayTracer::find_element(TreeID, const Position&) const
   return ID_NONE;
 }
 
-bool CuBQLRayTracer::point_in_volume(TreeID,
-                                     const Position&,
-                                     const Direction*,
-                                     const std::vector<MeshID>*) const
-{
-  fatal_error("Point-in-volume queries not currently supported with cuBQL ray tracer");
-  return false;
-}
-
-std::pair<double, MeshID>
-CuBQLRayTracer::ray_fire(TreeID tree,
-                         const Position& origin,
-                         const Direction& direction,
-                         const double tmax,
-                         HitOrientation hitOrientation,
-                         std::vector<MeshID>* const exclude_primitives)
+bool CuBQLRayTracer::point_in_volume(TreeID tree,
+                                     const Position& point,
+                                     const Direction* direction,
+                                     const std::vector<MeshID>* exclude_primitives) const
 {
   const auto& context = context_;
   const int gpu_id = context.gpuID;
+  const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
+  const auto volume_tlas_dd = volume_tlas.get_device_data();
 
   MeshID* d_exclude_primitives = nullptr;
   int exclude_count = 0;
@@ -322,37 +313,33 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                       context.hostID);
   }
 
-  double closest_distance = tmax;
-  MeshID closest_surface = ID_NONE;
-  MeshID closest_primitive = ID_NONE;
-  auto* d_surface_hit = static_cast<CubqlHit*>
-    (omp_target_alloc(sizeof(CubqlHit), gpu_id));
+  auto* d_hit = static_cast<CuBQLSurfaceHit*>
+    (omp_target_alloc(sizeof(CuBQLSurfaceHit), gpu_id));
 
-  const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
-  const auto volume_tlas_dd = volume_tlas.get_device_data();
-
-  CubqlHit surface_hit;
-  surface_hit.distance = tmax;
-  omp_target_memcpy(d_surface_hit,
-                    &surface_hit,
-                    sizeof(CubqlHit),
+  CuBQLSurfaceHit hit;
+  omp_target_memcpy(d_hit,
+                    &hit,
+                    sizeof(CuBQLSurfaceHit),
                     0,
                     0,
                     gpu_id,
                     context.hostID);
 
-  const int orientation = static_cast<int>(hitOrientation);
-  const cuBQL::vec3d ray_origin(origin.x, origin.y, origin.z);
-  const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
+  // Use provided direction or if Direction == nulptr use default direction
+  Direction directionUsed = (direction != nullptr) ? Direction{direction->x, direction->y, direction->z} 
+                            : Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
 
+  const cuBQL::vec3d ray_origin(point.x, point.y, point.z);
+  const cuBQL::vec3d ray_direction(directionUsed.x, directionUsed.y, directionUsed.z);
+  
   #pragma omp target device(gpu_id) \
-    is_device_ptr(d_exclude_primitives, d_surface_hit)
+    is_device_ptr(d_exclude_primitives, d_hit)
   {
     cuBQL::ray3d world_ray;
     world_ray.origin = ray_origin;
     world_ray.direction = ray_direction;
     world_ray.tMin = 0.0;
-    world_ray.tMax = d_surface_hit->distance;
+    world_ray.tMax = d_hit->distance;
 
     CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
 
@@ -395,13 +382,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
       }
 
       const double normal_dot_direction = dot(normal, world_ray.direction);
-      bool culled = false;
-      if (orientation == static_cast<int>(HitOrientation::EXITING)) {
-        culled = normal_dot_direction < 0.0;
-      } else if (orientation == static_cast<int>(HitOrientation::ENTERING)) {
-        culled = normal_dot_direction >= 0.0;
-      }
-      if (culled) {
+      if (orientation_cull(normal_dot_direction, HitOrientation::ANY)) {
         return world_ray.tMax;
       }
 
@@ -414,9 +395,10 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                                                     false,
                                                     0);
       if (intersection.hit) {
-        d_surface_hit->distance = intersection.t;
-        d_surface_hit->surface = mesh.surface_id;
-        d_surface_hit->primitive = primitive_ref;
+        d_hit->distance = intersection.t;
+        d_hit->surface = mesh.surface_id;
+        d_hit->primitive = primitive_ref;
+        d_hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
         world_ray.tMax = intersection.t;
       }
 
@@ -436,35 +418,183 @@ CuBQLRayTracer::ray_fire(TreeID tree,
     
   }
 
-  omp_target_memcpy(&surface_hit,
-                    d_surface_hit,
-                    sizeof(CubqlHit),
+  omp_target_memcpy(&hit,
+                    d_hit,
+                    sizeof(CuBQLSurfaceHit),
                     0,
                     0,
                     context.hostID,
                     gpu_id);
   
-  if (surface_hit.primitive != ID_NONE) {
-    closest_distance = surface_hit.distance;
-    closest_surface = surface_hit.surface;
-    closest_primitive = surface_hit.primitive;
-  }
-
-  omp_target_free(d_surface_hit, gpu_id);
+  omp_target_free(d_hit, gpu_id);
 
   if (d_exclude_primitives) {
     omp_target_free(d_exclude_primitives, gpu_id);
   }
 
-  if (closest_surface == ID_NONE) {
+  // if the ray hit nothing the point must be outside the volume
+  if (hit.primitive == ID_NONE) return false; 
+
+  return hit.piv == INSIDE;
+}
+
+std::pair<double, MeshID>
+CuBQLRayTracer::ray_fire(TreeID tree,
+                         const Position& origin,
+                         const Direction& direction,
+                         const double tmax,
+                         HitOrientation hitOrientation,
+                         std::vector<MeshID>* const exclude_primitives)
+{
+  const auto& context = context_;
+  const int gpu_id = context.gpuID;
+
+  MeshID* d_exclude_primitives = nullptr;
+  int exclude_count = 0;
+  if (exclude_primitives && !exclude_primitives->empty()) {
+    exclude_count = static_cast<int>(exclude_primitives->size());
+    d_exclude_primitives = static_cast<MeshID*>
+      (omp_target_alloc(exclude_count * sizeof(MeshID), gpu_id));
+    omp_target_memcpy(d_exclude_primitives,
+                      exclude_primitives->data(),
+                      exclude_count * sizeof(MeshID),
+                      0,
+                      0,
+                      gpu_id,
+                      context.hostID);
+  }
+
+  auto* d_hit = static_cast<CuBQLSurfaceHit*>
+    (omp_target_alloc(sizeof(CuBQLSurfaceHit), gpu_id));
+
+  const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
+  const auto volume_tlas_dd = volume_tlas.get_device_data();
+
+  CuBQLSurfaceHit hit;
+  hit.distance = tmax;
+  omp_target_memcpy(d_hit,
+                    &hit,
+                    sizeof(CuBQLSurfaceHit),
+                    0,
+                    0,
+                    gpu_id,
+                    context.hostID);
+  
+  // These are implicitly mapped to our openmp target region when we try to use them
+  const int ray_orientation = static_cast<int>(hitOrientation);
+  const cuBQL::vec3d ray_origin(origin.x, origin.y, origin.z);
+  const cuBQL::vec3d ray_direction(direction.x, direction.y, direction.z);
+
+  #pragma omp target device(gpu_id) \
+    is_device_ptr(d_exclude_primitives, d_hit)
+  {
+    cuBQL::ray3d world_ray;
+    world_ray.origin = ray_origin;
+    world_ray.direction = ray_direction;
+    world_ray.tMin = 0.0;
+    world_ray.tMax = d_hit->distance;
+
+    CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
+
+    // lambda to go from tlas->blas
+    auto enter_blas = [=, &surface_instance, &world_ray]
+      (cuBQL::ray3d& out_ray, cuBQL::bvh3d& out_bvh, int instance_id)
+    {
+      surface_instance = volume_tlas_dd.surface_instances[instance_id];
+      out_ray = world_ray; // No ray transformation because everything is in world coords with xdg
+      out_bvh = surface_instance.surface_blas.bvh; // Get the BLAS for the surface instance we hit in the TLAS
+    };
+
+
+    // lambda for primitive intersection
+    // - culls excluded primitives
+    // - culls backfacing or frontfacing hits based on hitOrientation
+    // - calls plucker intersection 
+    auto xdg_plucker_intersect_prim = [=, &world_ray, &surface_instance]
+      (uint32_t prim_id) -> double
+    {
+      const CuBQLSurfaceMesh::DD mesh = surface_instance.surface_blas.mesh;
+      const MeshID primitive_ref = mesh.primitive_refs[prim_id];
+
+      for (int i = 0; i < exclude_count; ++i) {
+        if (d_exclude_primitives[i] == primitive_ref) {
+          return world_ray.tMax;
+        }
+      }
+
+      const cuBQL::vec3i index = mesh.indices[prim_id];
+      cuBQL::vec3d vertices[3] = {
+        mesh.vertices[index.x],
+        mesh.vertices[index.y],
+        mesh.vertices[index.z]
+      };
+
+      cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
+      if (surface_instance.reverse_sense) {
+        normal = -normal;
+      }
+
+      const double normal_dot_direction = dot(normal, world_ray.direction);
+      if (orientation_cull(normal_dot_direction,
+                           static_cast<HitOrientation>(ray_orientation))) {
+        return world_ray.tMax;
+      }
+
+      // Reuse same plucker intersection function applied to other ray tracers
+      auto intersection = plucker_ray_tri_intersect(vertices,
+                                                    world_ray.origin,
+                                                    world_ray.direction,
+                                                    world_ray.tMax,
+                                                    world_ray.tMin,
+                                                    false,
+                                                    0);
+      if (intersection.hit) {
+        d_hit->distance = intersection.t;
+        d_hit->surface = mesh.surface_id;
+        d_hit->primitive = primitive_ref;
+        d_hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
+        world_ray.tMax = intersection.t;
+      }
+
+      return world_ray.tMax;
+    };
+
+    // We must provide the lambda to run on exit but it is empty for our use case 
+    // since there is no need for cleanup or transforming the ray back to world space
+    auto leave_blas = []() -> void {}; 
+
+    // Two level Traversal template from cuBQL 
+    cuBQL::shrinkingRayQuery::twoLevel::forEachPrim(enter_blas,
+                                                    leave_blas,
+                                                    xdg_plucker_intersect_prim,
+                                                    volume_tlas_dd.bvh,
+                                                    world_ray);
+    
+  }
+
+  omp_target_memcpy(&hit,
+                    d_hit,
+                    sizeof(CuBQLSurfaceHit),
+                    0,
+                    0,
+                    context.hostID,
+                    gpu_id);
+  
+  omp_target_free(d_hit, gpu_id);
+
+  if (d_exclude_primitives) {
+    omp_target_free(d_exclude_primitives, gpu_id);
+  }
+
+  if (hit.primitive == ID_NONE) {
     return {INFTY, ID_NONE};
   }
 
   if (exclude_primitives) {
-    exclude_primitives->push_back(closest_primitive);
+    exclude_primitives->push_back(hit.primitive);
   }
 
-  return {closest_distance, closest_surface};
+  return {hit.distance, hit.surface};
 }
 
 std::pair<double, MeshID>

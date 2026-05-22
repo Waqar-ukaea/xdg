@@ -60,13 +60,8 @@ struct CuBQLSurfaceMesh {
 };
 
 /*
-  Owns a cuBQL bottom-level acceleration structure over surface triangles.
+  Owns a cuBQL BVH used as a Bottom Level Acceleration Structure over surface triangles.
   The nested DD type is the compact device-data view used during traversal.
-
-  TODO - DPRT also supports grouping multiple triangle meshes into one BLAS.
-  xdg currently uses a simpler one topological surface mesh per BLAS layout
-  but maybe it would be useful for us to also support multiple surfaces being
-  tied to the same BLAS?
 */
 struct CuBQLSurfaceBLAS {
   struct DD {
@@ -89,7 +84,7 @@ struct CuBQLSurfaceBLAS {
 };
 
 /*
-  Owns a cuBQL top-level acceleration structure for one topological volume.
+  Owns a cuBQL BVH used as a Top-Level Acceleration Structure for one topological volume.
   The TLAS groups the surface BLASes that bound that volume and stores
   per-volume relationship metadata for each surface instance.
 */
@@ -102,7 +97,7 @@ struct CuBQLVolumeTLAS {
   */
   struct SurfaceInstanceDD {
     CuBQLSurfaceBLAS::DD surface_blas;
-    bool reverse_sense {false};
+    bool reverse_sense {false}; // value set in create_surface_tree based on parent vols
   };
 
   struct DD {
