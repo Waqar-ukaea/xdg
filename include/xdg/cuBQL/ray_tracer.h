@@ -68,12 +68,6 @@ private:
 
   cubql::Context context_;
 
-  struct CubqlHit {
-    double distance {INFTY};
-    MeshID surface {ID_NONE};
-    MeshID primitive {ID_NONE};
-  };
-
   std::unordered_map<TreeID, CuBQLVolumeTLAS> tree_to_volume_tlas_;
   std::unordered_map<MeshID, CuBQLSurfaceBLAS> surface_to_blas_map_;
 };
