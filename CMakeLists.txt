@@ -241,6 +241,7 @@ endif()
 if (XDG_ENABLE_CUBQL)
 list(APPEND xdg_sources
 src/cuBQL/triangles.cpp
+src/cuBQL/intersection.cpp
 src/cuBQL/ray_tracer.cpp
 )
 
@@ -248,6 +249,7 @@ src/cuBQL/ray_tracer.cpp
 # plucker intersection code. The compile definition is used in dp__math.h
 set_source_files_properties(
   src/cuBQL/ray_tracer.cpp
+  src/cuBQL/intersection.cpp
   PROPERTIES COMPILE_DEFINITIONS XDG_DP_MATH_CUBQL
 )
 
