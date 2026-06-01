@@ -8,10 +8,11 @@
 
 namespace xdg {
 
-CuBQLSurfaceHit
+void
 intersect_surface_tree(const cubql::Context& context,
                        const CuBQLVolumeTLAS& volume_tlas,
                        const CuBQLRay& ray,
+                       CuBQLSurfaceHit& surface_hit,
                        HitOrientation hit_orientation,
                        const std::vector<MeshID>* exclude_primitives)
 {
@@ -35,8 +36,7 @@ intersect_surface_tree(const cubql::Context& context,
   auto* d_surface_hit = static_cast<CuBQLSurfaceHit*>
     (omp_target_alloc(sizeof(CuBQLSurfaceHit), gpu_id));
 
-  CuBQLSurfaceHit surface_hit;
-  surface_hit.distance = ray.tmax;
+  surface_hit.distance = ray.tMax;
   omp_target_memcpy(d_surface_hit,
                     &surface_hit,
                     sizeof(CuBQLSurfaceHit),
@@ -54,7 +54,7 @@ intersect_surface_tree(const cubql::Context& context,
     cuBQL::ray3d world_ray;
     world_ray.origin = ray.origin;
     world_ray.direction = ray.direction;
-    world_ray.tMin = ray.tmin;
+    world_ray.tMin = ray.tMin;
     world_ray.tMax = d_surface_hit->distance;
 
     CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
@@ -139,7 +139,7 @@ intersect_surface_tree(const cubql::Context& context,
     omp_target_free(d_exclude_primitives, gpu_id);
   }
 
-  return surface_hit;
+  return;
 }
 
 } // namespace xdg

@@ -18,9 +18,19 @@ namespace xdg {
 struct CuBQLRay {
   cuBQL::vec3d origin;
   cuBQL::vec3d direction;
-  double tmin {0.0};
-  double tmax {INFTY};
+  double tMin {0.0};
+  double tMax {INFTY};
 };
+
+/* POD SurfaceRay struct for external population*/
+// struct CuBQLSurfaceRay {
+//   double origin[3];
+//   double direction[3];
+//   uint32_t volume_slot;
+//   uint32_t enabled;
+//   const MeshID* exclude_primitives;
+//   int32_t exclude_count;
+// };
 
 // TODO - Consider whether this is useful/necessary as its own struct
 // struct CuBQLExcludeList {
@@ -51,10 +61,11 @@ inline bool orientation_cull(double normal_dot_direction,
   return false;
 }
 
-CuBQLSurfaceHit
+void
 intersect_surface_tree(const cubql::Context& context,
                        const CuBQLVolumeTLAS& volume_tlas,
                        const CuBQLRay& ray,
+                       CuBQLSurfaceHit& hit,
                        HitOrientation hit_orientation,
                        const std::vector<MeshID>* exclude_primitives);
 
