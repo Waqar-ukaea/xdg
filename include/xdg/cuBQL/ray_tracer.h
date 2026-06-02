@@ -66,10 +66,16 @@ private:
   CuBQLSurfaceBLAS
   register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id);
 
+  void upload_volume_to_tlas_table_();
+
   cubql::Context context_;
 
   std::unordered_map<TreeID, CuBQLVolumeTLAS> tree_to_volume_tlas_;
   std::unordered_map<MeshID, CuBQLSurfaceBLAS> surface_to_blas_map_;
+
+  std::vector<CuBQLVolumeTLAS::DD> volume_to_tlas_;
+  CuBQLVolumeTLAS::DD* d_volume_to_tlas_ {nullptr};
+  bool initialized_ {false};
 };
 
 } // namespace xdg
