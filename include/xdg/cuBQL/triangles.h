@@ -101,10 +101,12 @@ struct CuBQLVolumeTLAS {
   };
 
   struct DD {
+    MeshID volume_id {ID_NONE};
     const SurfaceInstanceDD* surface_instances {nullptr};
     cuBQL::bvh3d bvh; // TLAS device handle 
   };
 
+  MeshID volume_id {ID_NONE};
   cuBQL::bvh3d bvh; // TLAS host handle
   SurfaceInstanceDD* d_surface_instances {nullptr};
 
@@ -113,7 +115,7 @@ struct CuBQLVolumeTLAS {
 
   DD get_device_data() const
   {
-    return {d_surface_instances, bvh};
+    return {volume_id, d_surface_instances, bvh};
   }
 
   void release();

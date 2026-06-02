@@ -25,6 +25,11 @@ CuBQLRayTracer::CuBQLRayTracer()
 
 CuBQLRayTracer::~CuBQLRayTracer()
 {
+  if (d_volume_to_tlas_) {
+    omp_target_free(d_volume_to_tlas_, context_.gpuID);
+    d_volume_to_tlas_ = nullptr;
+  }
+
   for (auto& [tree, tlas] : tree_to_volume_tlas_) {
     tlas.release();
   }
@@ -36,6 +41,32 @@ CuBQLRayTracer::~CuBQLRayTracer()
 
 void CuBQLRayTracer::init()
 {
+  upload_volume_to_tlas_table_();
+  initialized_ = true;
+}
+
+void CuBQLRayTracer::upload_volume_to_tlas_table_()
+{
+  const int gpu_id = context_.gpuID;
+
+  if (d_volume_to_tlas_) {
+    omp_target_free(d_volume_to_tlas_, gpu_id);
+    d_volume_to_tlas_ = nullptr;
+  }
+
+  if (volume_to_tlas_.empty()) {
+    return;
+  }
+
+  d_volume_to_tlas_ = static_cast<CuBQLVolumeTLAS::DD*>
+    (omp_target_alloc(volume_to_tlas_.size() * sizeof(CuBQLVolumeTLAS::DD), gpu_id));
+  omp_target_memcpy(d_volume_to_tlas_,
+                    volume_to_tlas_.data(),
+                    volume_to_tlas_.size() * sizeof(CuBQLVolumeTLAS::DD),
+                    0,
+                    0,
+                    gpu_id,
+                    context_.hostID);
 }
 
 std::pair<TreeID, TreeID>
@@ -105,7 +136,7 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
   auto* d_aabbs = static_cast<cuBQL::box3d*>
     (omp_target_alloc(h_indices.size() * sizeof(cuBQL::box3d), gpu_id));
   const auto num_primitives = static_cast<uint32_t>(h_indices.size());
-  
+
   // TODO - Abstract this out into its own bounding_box creation function
   #pragma omp target device(gpu_id) is_device_ptr(d_vertices, d_indices, d_aabbs)
   #pragma omp teams distribute parallel for
@@ -242,6 +273,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   tlasBuildParams.maxAllowedLeafSize = 1;
 
   CuBQLVolumeTLAS volume_tlas;
+  volume_tlas.volume_id = volume_id; // store meshid in the TLAS object for easier mapping between the two
   volume_tlas.num_surface_instances = static_cast<uint32_t>(h_surface_instances.size());
   volume_tlas.gpu_id = gpu_id;
   volume_tlas.d_surface_instances = d_surface_instances;
@@ -253,7 +285,24 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
 
   omp_target_free(d_tlas_boxes, gpu_id);
 
-  tree_to_volume_tlas_.emplace(tree, std::move(volume_tlas));
+  // Still required for lifetime and scalar calls which need to resolve TreeID->volume_tlas on CPU side.
+  auto result = tree_to_volume_tlas_.emplace(tree, std::move(volume_tlas));
+  auto it = result.first;
+
+  // Keep a dense host-side MeshID -> TLAS device-data table for prepared queries.
+  // The TLAS object in tree_to_volume_tlas_ owns the device allocations; this table
+  // only stores lightweight DD views indexed by volume ID. Upload to device once in
+  // init(), unless a volume is registered after initialization.
+
+  const auto volume_index = static_cast<size_t>(volume_id);
+  if (volume_index >= volume_to_tlas_.size()) {
+    volume_to_tlas_.resize(volume_index + 1);
+  }
+  volume_to_tlas_[volume_index] = it->second.get_device_data();
+
+  if (initialized_) {
+    upload_volume_to_tlas_table_();
+  }
   
   return tree;
 }
@@ -294,7 +343,6 @@ bool CuBQLRayTracer::point_in_volume(TreeID tree,
                                      const std::vector<MeshID>* exclude_primitives) const
 {
   const auto& context = context_;
-  const int gpu_id = context.gpuID;
   const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
 
   // Use provided direction or if Direction == nulptr use default direction
@@ -310,7 +358,8 @@ bool CuBQLRayTracer::point_in_volume(TreeID tree,
 
   CuBQLSurfaceHit surface_hit;
 
-  intersect_surface_tree(context, volume_tlas, ray, surface_hit, HitOrientation::ANY, exclude_primitives);
+  // TODO - Maybe we can come up with a better name for this
+  intersect_surface_tree_scalar(context, volume_tlas, ray, surface_hit, HitOrientation::ANY, exclude_primitives);
 
   // if the ray hit nothing the point must be outside the volume
   if (surface_hit.primitive == ID_NONE) return false; 
@@ -327,11 +376,7 @@ CuBQLRayTracer::ray_fire(TreeID tree,
                          std::vector<MeshID>* const exclude_primitives)
 {
   const auto& context = context_;
-  const int gpu_id = context.gpuID;
   const CuBQLVolumeTLAS& volume_tlas = tree_to_volume_tlas_.at(tree);
-
-  // These are implicitly mapped to our openmp target region when we try to use them
-  const int ray_orientation = static_cast<int>(hitOrientation);
 
   CuBQLRay ray;
   ray.origin = cuBQL::vec3d(origin.x, origin.y, origin.z);
@@ -341,7 +386,8 @@ CuBQLRayTracer::ray_fire(TreeID tree,
 
   CuBQLSurfaceHit surface_hit;
 
-  intersect_surface_tree(context, volume_tlas, ray, surface_hit, hitOrientation, exclude_primitives);
+  // TODO - Maybe we can come up with a better name for this
+  intersect_surface_tree_scalar(context, volume_tlas, ray, surface_hit, hitOrientation, exclude_primitives);
 
   if (surface_hit.primitive == ID_NONE) {
     return {INFTY, ID_NONE};
