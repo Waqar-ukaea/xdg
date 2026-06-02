@@ -20,6 +20,7 @@ struct CuBQLRay {
   cuBQL::vec3d direction;
   double tMin {0.0};
   double tMax {INFTY};
+  MeshID volume {ID_NONE}; // volume we are tracing ray against
 };
 
 /* POD SurfaceRay struct for external population*/
@@ -61,13 +62,15 @@ inline bool orientation_cull(double normal_dot_direction,
   return false;
 }
 
+// Wrapper for launching a single ray intersection query against the surface tree, with Host<->Device staging of ray and hit data
 void
-intersect_surface_tree(const cubql::Context& context,
-                       const CuBQLVolumeTLAS& volume_tlas,
-                       const CuBQLRay& ray,
-                       CuBQLSurfaceHit& hit,
-                       HitOrientation hit_orientation,
-                       const std::vector<MeshID>* exclude_primitives);
+intersect_surface_tree_scalar(const cubql::Context& context,
+                              const CuBQLVolumeTLAS& volume_tlas,
+                              const CuBQLRay& ray,
+                              CuBQLSurfaceHit& hit,
+                              HitOrientation hit_orientation,
+                              const std::vector<MeshID>* exclude_primitives);
+
 
 } // namespace xdg
 
