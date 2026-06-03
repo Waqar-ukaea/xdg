@@ -1,16 +1,28 @@
 #include <cstdint>
 #include <cstdlib>
+<<<<<<< HEAD
 #include <filesystem>
+=======
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+<<<<<<< HEAD
 #include "argparse/argparse.hpp"
 #include <fmt/ranges.h>
 
 #include "xdg/config.h"
+=======
+#ifdef XDG_OPENMP
+#include <omp.h>
+#endif
+
+#include "argparse/argparse.hpp"
+
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
 #include "xdg/constants.h"
 #include "xdg/error.h"
 #include "xdg/timer.h"
@@ -19,12 +31,19 @@
 
 #include "ray_benchmark.h"
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
 using namespace xdg;
 
 int main(int argc, char** argv)
 {
+<<<<<<< HEAD
   argparse::ArgumentParser args("XDG Raytracing throughput benchmarking tool",
+=======
+  argparse::ArgumentParser args("XDG Ray Tracing throughput benchmarking tool",
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
                                 "1.0",
                                 argparse::default_arguments::help);
 
@@ -46,6 +65,7 @@ int main(int argc, char** argv)
     .scan<'u', std::uint32_t>();
 
   args.add_argument("-o", "-p", "--origin", "--position")
+<<<<<<< HEAD
     .help("Ray origin/position. Defaults to the center of the model bounding box")
     .scan<'g', double>()
     .nargs(3);
@@ -55,6 +75,13 @@ int main(int argc, char** argv)
     .implicit_value(true)
     .help("Use the queried volume bounding box center as the ray origin");
 
+=======
+    .default_value(std::vector<double>{0.0, 0.0, 0.0})
+    .help("Ray origin/position")
+    .scan<'g', double>()
+    .nargs(3);
+
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
   args.add_argument("-m", "--mesh-library")
     .help("Mesh library to use. One of (MOAB, LIBMESH)")
     .default_value("MOAB");
@@ -73,11 +100,14 @@ int main(int argc, char** argv)
     .help("Radius of a scattered source around the origin")
     .scan<'g', double>();
 
+<<<<<<< HEAD
   args.add_argument("--format")
     .default_value("human")
     .choices("human", "csv")
     .help("stdout format. Human readable (default) or csv");
 
+=======
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
   args.add_description(
     "Benchmarks ray-fire throughput for a selected mesh volume. A source "
     "position is provided and ray directions are randomly generated from it.");
@@ -112,12 +142,19 @@ int main(int argc, char** argv)
   }
 
   const MeshID volume = args.get<int>("volume");
+<<<<<<< HEAD
   const std::string model_filename = args.get<std::string>("filename");
   const std::string model_name = std::filesystem::path(model_filename).filename().string();
   const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
   const std::uint32_t seed = args.get<std::uint32_t>("--seed");
   const double source_radius = args.get<double>("--source-radius");
   const std::string output_format = args.get<std::string>("--format");
+=======
+  const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
+  const std::uint32_t seed = args.get<std::uint32_t>("--seed");
+  const Position origin = args.get<std::vector<double>>("--origin");
+  const double source_radius = args.get<double>("--source-radius");
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
 
   Timer wall_timer;
   Timer setup_timer;
@@ -130,6 +167,7 @@ int main(int argc, char** argv)
   setup_timer.start();
   std::shared_ptr<XDG> xdg = XDG::create(mesh_lib, rt_lib);
   const auto& mesh_manager = xdg->mesh_manager();
+<<<<<<< HEAD
   mesh_manager->load_file(model_filename);
   mesh_manager->init();
 
@@ -222,6 +260,73 @@ int main(int argc, char** argv)
   const double trace_time = trace_timer.elapsed();
   const double end_to_end_time = generation_time + trace_time;
   const double setup_time = setup_timer.elapsed();
+=======
+  mesh_manager->load_file(args.get<std::string>("filename"));
+  mesh_manager->init();
+
+  if (args.get<bool>("--list")) {
+    for (auto mesh_volume : mesh_manager->volumes()) {
+      std::cout << mesh_volume << std::endl;
+    }
+    return 0;
+  }
+
+  xdg->prepare_volume_for_raytracing(volume);
+  xdg->ray_tracing_interface()->init();
+  setup_timer.stop();
+
+  if (rt_lib == RTLibrary::EMBREE) {
+    #ifdef XDG_OPENMP
+    rt_label += " (" + std::to_string(omp_get_max_threads()) + " CPU threads)";
+    #endif
+  }
+
+  std::cout << "Volume ID: " << volume
+            << " with: " << mesh_manager->num_volume_faces(volume)
+            << " faces" << std::endl;
+  std::cout << "Starting ray fire benchmark with " << num_rays
+            << " rays using " << rt_label << "\n" << std::endl;
+  std::cout << "XDG initialisation time       = "
+            << setup_timer.elapsed() << "s" << std::endl;
+
+  if (rt_lib == RTLibrary::EMBREE) {
+    // Generate random rays from source
+    generation_timer.start();
+    std::vector<Position> origins(num_rays);
+    std::vector<Direction> directions(num_rays);
+
+    #pragma omp parallel for schedule(static)
+    for (std::size_t i = 0; i < num_rays; ++i) {
+      std::uint32_t state = seed ^ static_cast<std::uint32_t>(i);
+      auto sample = tools::benchmark::random_spherical_source(origin.x,
+                                                              origin.y,
+                                                              origin.z,
+                                                              state,
+                                                              source_radius);
+      origins[i] = Position(sample.position[0],
+                            sample.position[1],
+                            sample.position[2]);
+      directions[i] = Direction(sample.direction[0],
+                                sample.direction[1],
+                                sample.direction[2]);
+    }
+    generation_timer.stop();
+
+    // Trace rays
+    trace_timer.start();
+
+    #pragma omp parallel for schedule(static)
+    for (std::size_t i = 0; i < num_rays; ++i) {
+      (void) xdg->ray_fire(volume, origins[i], directions[i]);
+    }
+
+    trace_timer.stop();
+  }
+
+  const double generation_time = generation_timer.elapsed();
+  const double trace_time = trace_timer.elapsed();
+  const double end_to_end_time = generation_time + trace_time;
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
   const double trace_only_rps = trace_time > 0.0
     ? static_cast<double>(num_rays) / trace_time
     : 0.0;
@@ -230,6 +335,7 @@ int main(int argc, char** argv)
     : 0.0;
 
   wall_timer.stop();
+<<<<<<< HEAD
   const double wall_time = wall_timer.elapsed();
 
   const std::vector<std::string> csv_columns {
@@ -317,6 +423,24 @@ int main(int argc, char** argv)
     std::cout << "End-to-end throughput : " << end_to_end_rps << " rays/s\n";
     std::cout << "Trace-only throughput : " << trace_only_rps << " rays/s\n";
   }
+=======
+
+  std::cout << "Random ray generation time   = "
+            << generation_time << "s" << std::endl;
+  std::cout << "Generation + tracing time    = "
+            << end_to_end_time << "s" << std::endl;
+  std::cout << "End-to-end throughput        = "
+            << end_to_end_rps << " rays/s" << std::endl;
+  std::cout << "Full wall-clock time         = "
+            << wall_timer.elapsed() << "s (post-argparse)" << std::endl;
+
+  std::cout << "----------------------------------------" << std::endl;
+  std::cout << "Ray tracing time (trace-only)= "
+            << trace_time << "s for " << num_rays << " rays" << std::endl;
+  std::cout << "Trace-only throughput        = "
+            << trace_only_rps << " rays/s" << std::endl;
+  std::cout << "----------------------------------------" << std::endl;
+>>>>>>> 1003ecb (Working ray_benchmark miniapp)
 
   return 0;
 }
