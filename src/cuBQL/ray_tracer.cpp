@@ -400,6 +400,26 @@ CuBQLRayTracer::ray_fire(TreeID tree,
   return {surface_hit.distance, surface_hit.surface};
 }
 
+void
+CuBQLRayTracer::ray_fire_batch(const CuBQLRay* d_rays,
+                               CuBQLSurfaceHit* d_hits,
+                               std::size_t num_rays,
+                               HitOrientation orientation)
+{
+  if (num_rays == 0) return;
+
+  if (!d_volume_to_tlas_) {
+    fatal_error("cuBQL volume TLAS lookup table has not been uploaded");
+  }
+
+  intersect_surface_tree_batch(context_,
+                               d_volume_to_tlas_,
+                               d_rays,
+                               d_hits,
+                               num_rays,
+                               orientation);
+}
+
 std::pair<double, MeshID>
 CuBQLRayTracer::closest(TreeID, const Position&)
 {

@@ -1,7 +1,8 @@
+#include <omp.h>
+
 #include "xdg/cuBQL/intersection.h"
 #include "xdg/geometry/plucker.h"
-
-#include <omp.h>
+#include "xdg/error.h"
 
 #include "cuBQL/math/Ray.h"
 #include "cuBQL/traversal/rayQueries.h"
@@ -10,13 +11,12 @@ namespace xdg {
 
 // Core traversal and intersection routine for a single ray against a given volume tlas
 #pragma omp declare target
-static inline void intersect_surface_tree(
-    CuBQLVolumeTLAS::DD volume_tlas,
-    CuBQLRay ray,
-    CuBQLSurfaceHit* hit,
-    int orientation,
-    const MeshID* exclude_primitives,
-    int exclude_count)
+static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
+                                          CuBQLRay ray,
+                                          CuBQLSurfaceHit* hit,
+                                          int orientation,
+                                          const MeshID* exclude_primitives,
+                                          int exclude_count)
 {
   cuBQL::ray3d world_ray;
   world_ray.origin = ray.origin;
@@ -97,7 +97,6 @@ static inline void intersect_surface_tree(
 }
 #pragma omp end declare target
 
-// Wrapper for launching a single ray intersection query against the surface tree, with Host<->Device staging of ray and hit data
 void
 intersect_surface_tree_scalar(const cubql::Context& context,
                               const CuBQLVolumeTLAS& volume_tlas,
@@ -164,6 +163,43 @@ intersect_surface_tree_scalar(const cubql::Context& context,
   }
 
   return;
+}
+
+void
+intersect_surface_tree_batch(const cubql::Context& context,
+                             const CuBQLVolumeTLAS::DD* d_volume_to_tlas,
+                             const CuBQLRay* d_rays,
+                             CuBQLSurfaceHit* d_hits,
+                             std::size_t num_rays,
+                             HitOrientation hit_orientation)
+{
+
+  if (num_rays == 0) return;
+
+  if (!d_volume_to_tlas || !d_rays || !d_hits) {
+    fatal_error("Invalid cuBQL batch intersection buffers");
+  }
+
+  const int gpu_id = context.gpuID;
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(d_volume_to_tlas, d_rays, d_hits)
+  for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
+    const CuBQLRay ray = d_rays[ray_id];
+    const CuBQLVolumeTLAS::DD volume_tlas = d_volume_to_tlas[ray.volume];
+
+    CuBQLSurfaceHit hit;
+    hit.distance = ray.tMax;
+
+    intersect_surface_tree(volume_tlas,
+                           ray,
+                           &hit,
+                           static_cast<int>(hit_orientation),
+                           nullptr,
+                           0);
+
+    d_hits[ray_id] = hit;
+  }
 }
 
 } // namespace xdg
