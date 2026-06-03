@@ -7,6 +7,7 @@
 #undef __CUDA_ARCH__
 #endif
 
+#include <cstddef>
 #include <vector>
 
 #include "xdg/constants.h"
@@ -62,7 +63,10 @@ inline bool orientation_cull(double normal_dot_direction,
   return false;
 }
 
-// Wrapper for launching a single ray intersection query against the surface tree, with Host<->Device staging of ray and hit data
+/*
+Wrapper for launching a single ray intersection query against the surface tree, with Host<->Device staging of ray and hit data
+Performs host side staging and transfer hit data back to host after device side traversal
+*/
 void
 intersect_surface_tree_scalar(const cubql::Context& context,
                               const CuBQLVolumeTLAS& volume_tlas,
@@ -71,6 +75,14 @@ intersect_surface_tree_scalar(const cubql::Context& context,
                               HitOrientation hit_orientation,
                               const std::vector<MeshID>* exclude_primitives);
 
+
+void
+intersect_surface_tree_batch(const cubql::Context& context,
+                             const CuBQLVolumeTLAS::DD* d_volume_to_tlas,
+                             const CuBQLRay* d_rays,
+                             CuBQLSurfaceHit* d_hits,
+                             std::size_t num_rays,
+                             HitOrientation hit_orientation);
 
 } // namespace xdg
 

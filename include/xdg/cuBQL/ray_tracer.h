@@ -1,6 +1,7 @@
 #ifndef _XDG_CUBQL_RAY_TRACING_INTERFACE_H
 #define _XDG_CUBQL_RAY_TRACING_INTERFACE_H
 
+#include <cstddef>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -14,6 +15,9 @@
 #include "xdg/ray_tracing_interface.h"
 
 namespace xdg {
+
+struct CuBQLRay;
+struct CuBQLSurfaceHit;
 
 class CuBQLRayTracer : public RayTracer {
 public:
@@ -53,6 +57,11 @@ public:
                                      const double dist_limit = INFTY,
                                      HitOrientation orientation = HitOrientation::EXITING,
                                      std::vector<MeshID>* const exclude_primitives = nullptr) override;
+
+  void ray_fire_batch(const CuBQLRay* d_rays,
+                      CuBQLSurfaceHit* d_hits,
+                      std::size_t num_rays,
+                      HitOrientation orientation = HitOrientation::EXITING);
 
   std::pair<double, MeshID> closest(TreeID tree,
                                     const Position& origin) override;
