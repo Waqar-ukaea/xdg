@@ -19,6 +19,10 @@
 
 #include "ray_benchmark.h"
 
+#ifdef XDG_ENABLE_CUBQL
+#include "xdg/cuBQL/intersection.h"
+#include "xdg/cuBQL/ray_tracer.h"
+#endif
 
 using namespace xdg;
 
@@ -98,6 +102,8 @@ int main(int argc, char** argv)
   RTLibrary rt_lib;
   if (rt_str == "EMBREE") {
     rt_lib = RTLibrary::EMBREE;
+  } else if (rt_str == "CUBQL") {
+    rt_lib = RTLibrary::CUBQL;
   } else {
     fatal_error("Ray tracing library '{}' is not implemented in this benchmark tool yet", rt_str);
   }
@@ -194,6 +200,71 @@ int main(int argc, char** argv)
     }
 
     trace_timer.stop();
+  }
+  else if (rt_lib == RTLibrary::CUBQL) {
+    #ifndef XDG_ENABLE_CUBQL
+    fatal_error("This build was not compiled with cuBQL support (XDG_ENABLE_CUBQL=OFF).");
+    #else
+    auto rti = std::dynamic_pointer_cast<CuBQLRayTracer>(xdg->ray_tracing_interface());
+
+    // Generate random rays and trace in one step
+    generation_timer.start();
+
+    const int gpu_id = omp_get_default_device();
+
+    CuBQLRay* d_rays = static_cast<CuBQLRay*>(
+      omp_target_alloc(num_rays * sizeof(CuBQLRay), gpu_id));
+
+    if (!d_rays) {
+      fatal_error("Failed to allocate cuBQL ray buffer");
+    }
+
+    const double origin_x = origin.x;
+    const double origin_y = origin.y;
+    const double origin_z = origin.z;
+
+    #pragma omp target teams distribute parallel for device(gpu_id) is_device_ptr(d_rays)
+    for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
+      std::uint32_t state = seed ^ static_cast<std::uint32_t>(ray_id);
+
+      auto sample = tools::benchmark::random_spherical_source(origin_x,
+                                                              origin_y,
+                                                              origin_z,
+                                                              state,
+                                                              source_radius);
+
+      CuBQLRay ray;
+      ray.origin = cuBQL::vec3d(sample.position[0],
+                                sample.position[1],
+                                sample.position[2]);
+      ray.direction = cuBQL::vec3d(sample.direction[0],
+                                  sample.direction[1],
+                                  sample.direction[2]);
+      ray.tMin = 0.0;
+      ray.tMax = INFTY;
+      ray.volume = volume;
+
+      d_rays[ray_id] = ray;
+    }
+
+    CuBQLSurfaceHit* d_hits = static_cast<CuBQLSurfaceHit*>(
+      omp_target_alloc(num_rays * sizeof(CuBQLSurfaceHit), gpu_id));
+
+    if (!d_hits) {
+      omp_target_free(d_rays, gpu_id);
+      fatal_error("Failed to allocate cuBQL hit buffer");
+    }
+
+    generation_timer.stop();
+
+    // Trace rays
+    trace_timer.start();
+    rti->ray_fire_batch(d_rays, d_hits, num_rays);
+    trace_timer.stop();
+
+    omp_target_free(d_hits, gpu_id);
+    omp_target_free(d_rays, gpu_id);
+    #endif
   }
 
   const double generation_time = generation_timer.elapsed();
