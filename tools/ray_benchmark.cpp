@@ -21,6 +21,7 @@
 #endif
 
 #include "argparse/argparse.hpp"
+#include <fmt/ranges.h>
 
 >>>>>>> 1003ecb (Working ray_benchmark miniapp)
 #include "xdg/constants.h"
@@ -30,7 +31,6 @@
 #include "xdg/xdg.h"
 
 #include "ray_benchmark.h"
-#include <fmt/ranges.h>
 
 
 <<<<<<< HEAD
@@ -287,11 +287,9 @@ int main(int argc, char** argv)
   xdg->prepare_volume_for_raytracing(volume);
   xdg->ray_tracing_interface()->init();
   setup_timer.stop();
-
   if (rt_lib == RTLibrary::EMBREE) {
-    #ifdef XDG_OPENMP
-    rt_label += " (" + std::to_string(omp_get_max_threads()) + " CPU threads)";
-    #endif
+    rt_label += " (" + std::to_string(XDGConfig::config().n_threads())
+             + " CPU threads)";
   }
 
   std::cout << "Volume ID: " << volume
