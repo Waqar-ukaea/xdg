@@ -30,6 +30,8 @@
 #include "xdg/xdg.h"
 
 #include "ray_benchmark.h"
+#include <fmt/ranges.h>
+
 
 <<<<<<< HEAD
 
@@ -264,9 +266,7 @@ int main(int argc, char** argv)
   mesh_manager->init();
 
   if (args.get<bool>("--list")) {
-    for (auto mesh_volume : mesh_manager->volumes()) {
-      std::cout << mesh_volume << std::endl;
-    }
+    std::cout << "[" << fmt::format("{}", fmt::join(mesh_manager->volumes(), ", ")) << "]\n";
     return 0;
   }
 
