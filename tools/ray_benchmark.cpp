@@ -46,10 +46,14 @@ int main(int argc, char** argv)
     .scan<'u', std::uint32_t>();
 
   args.add_argument("-o", "-p", "--origin", "--position")
-    .default_value(std::vector<double>{0.0, 0.0, 0.0})
-    .help("Ray origin/position")
+    .help("Ray origin/position. Defaults to the center of the model bounding box")
     .scan<'g', double>()
     .nargs(3);
+
+  args.add_argument("--volume-center")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Use the queried volume bounding box center as the ray origin");
 
   args.add_argument("-m", "--mesh-library")
     .help("Mesh library to use. One of (MOAB, LIBMESH)")
@@ -105,7 +109,6 @@ int main(int argc, char** argv)
   const MeshID volume = args.get<int>("volume");
   const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
   const std::uint32_t seed = args.get<std::uint32_t>("--seed");
-  const Position origin = args.get<std::vector<double>>("--origin");
   const double source_radius = args.get<double>("--source-radius");
 
   Timer wall_timer;
@@ -127,6 +130,20 @@ int main(int argc, char** argv)
       std::cout << mesh_volume << std::endl;
     }
     return 0;
+  }
+
+  const auto origin_arg = args.present<std::vector<double>>("--origin");
+  bool use_volume_center = args.get<bool>("--volume-center");
+  if (origin_arg && use_volume_center) {
+    warning("--volume-center enabled but an explicit origin was also provided. The explicit origin will be used and the volume center will be ignored.");
+    use_volume_center = false;
+  }
+
+  Position origin = mesh_manager->global_bounding_box().center();
+  if (origin_arg) {
+    origin = Position(origin_arg.value());
+  } else if (use_volume_center) {
+    origin = mesh_manager->volume_bounding_box(volume).center();
   }
 
   xdg->prepare_volume_for_raytracing(volume);
