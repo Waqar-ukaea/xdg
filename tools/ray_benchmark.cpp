@@ -292,13 +292,7 @@ int main(int argc, char** argv)
              + " CPU threads)";
   }
 
-  std::cout << "Volume ID: " << volume
-            << " with: " << mesh_manager->num_volume_faces(volume)
-            << " faces" << std::endl;
-  std::cout << "Starting ray fire benchmark with " << num_rays
-            << " rays using " << rt_label << "\n" << std::endl;
-  std::cout << "XDG initialisation time       = "
-            << setup_timer.elapsed() << "s" << std::endl;
+  const auto num_faces = mesh_manager->num_volume_faces(volume);
 
   if (rt_lib == RTLibrary::EMBREE) {
     // Generate random rays from source
