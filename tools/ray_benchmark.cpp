@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -23,7 +24,7 @@ using namespace xdg;
 
 int main(int argc, char** argv)
 {
-  argparse::ArgumentParser args("XDG Ray Tracing throughput benchmarking tool",
+  argparse::ArgumentParser args("XDG Raytracing throughput benchmarking tool",
                                 "1.0",
                                 argparse::default_arguments::help);
 
@@ -72,6 +73,11 @@ int main(int argc, char** argv)
     .help("Radius of a scattered source around the origin")
     .scan<'g', double>();
 
+  args.add_argument("--format")
+    .default_value("human")
+    .choices("human", "csv")
+    .help("stdout format. Human readable (default) or csv");
+
   args.add_description(
     "Benchmarks ray-fire throughput for a selected mesh volume. A source "
     "position is provided and ray directions are randomly generated from it.");
@@ -106,9 +112,12 @@ int main(int argc, char** argv)
   }
 
   const MeshID volume = args.get<int>("volume");
+  const std::string model_filename = args.get<std::string>("filename");
+  const std::string model_name = std::filesystem::path(model_filename).filename().string();
   const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
   const std::uint32_t seed = args.get<std::uint32_t>("--seed");
   const double source_radius = args.get<double>("--source-radius");
+  const std::string output_format = args.get<std::string>("--format");
 
   Timer wall_timer;
   Timer setup_timer;
@@ -121,7 +130,7 @@ int main(int argc, char** argv)
   setup_timer.start();
   std::shared_ptr<XDG> xdg = XDG::create(mesh_lib, rt_lib);
   const auto& mesh_manager = xdg->mesh_manager();
-  mesh_manager->load_file(args.get<std::string>("filename"));
+  mesh_manager->load_file(model_filename);
   mesh_manager->init();
 
   if (args.get<bool>("--list")) {
@@ -151,13 +160,7 @@ int main(int argc, char** argv)
              + " CPU threads)";
   }
 
-  std::cout << "Volume ID: " << volume
-            << " with: " << mesh_manager->num_volume_faces(volume)
-            << " faces" << std::endl;
-  std::cout << "Starting ray fire benchmark with " << num_rays
-            << " rays using " << rt_label << "\n" << std::endl;
-  std::cout << "XDG initialisation time       = "
-            << setup_timer.elapsed() << "s" << std::endl;
+  const auto num_faces = mesh_manager->num_volume_faces(volume);
 
   if (rt_lib == RTLibrary::EMBREE) {
     // Generate random rays from source
@@ -196,6 +199,7 @@ int main(int argc, char** argv)
   const double generation_time = generation_timer.elapsed();
   const double trace_time = trace_timer.elapsed();
   const double end_to_end_time = generation_time + trace_time;
+  const double setup_time = setup_timer.elapsed();
   const double trace_only_rps = trace_time > 0.0
     ? static_cast<double>(num_rays) / trace_time
     : 0.0;
@@ -204,22 +208,78 @@ int main(int argc, char** argv)
     : 0.0;
 
   wall_timer.stop();
+  const double wall_time = wall_timer.elapsed();
 
-  std::cout << "Random ray generation time   = "
-            << generation_time << "s" << std::endl;
-  std::cout << "Generation + tracing time    = "
-            << end_to_end_time << "s" << std::endl;
-  std::cout << "End-to-end throughput        = "
-            << end_to_end_rps << " rays/s" << std::endl;
-  std::cout << "Full wall-clock time         = "
-            << wall_timer.elapsed() << "s (post-argparse)" << std::endl;
+  const std::vector<std::string> csv_columns {
+    "model",
+    "mesh_library",
+    "rt_library",
+    "volume",
+    "num_faces",
+    "num_rays",
+    "seed",
+    "source_radius",
+    "origin_x",
+    "origin_y",
+    "origin_z",
+    "n_threads",
+    "initialisation_time_s",
+    "generation_time_s",
+    "trace_time_s",
+    "generation_trace_time_s",
+    "end_to_end_throughput_rays_per_s",
+    "trace_only_throughput_rays_per_s",
+    "wall_time_s"
+  };
 
-  std::cout << "----------------------------------------" << std::endl;
-  std::cout << "Ray tracing time (trace-only)= "
-            << trace_time << "s for " << num_rays << " rays" << std::endl;
-  std::cout << "Trace-only throughput        = "
-            << trace_only_rps << " rays/s" << std::endl;
-  std::cout << "----------------------------------------" << std::endl;
+  const std::vector<std::string> csv_values {
+    model_name,
+    mesh_str,
+    rt_str,
+    fmt::format("{}", volume),
+    fmt::format("{}", num_faces),
+    fmt::format("{}", num_rays),
+    fmt::format("{}", seed),
+    fmt::format("{}", source_radius),
+    fmt::format("{}", origin.x),
+    fmt::format("{}", origin.y),
+    fmt::format("{}", origin.z),
+    fmt::format("{}", XDGConfig::config().n_threads()),
+    fmt::format("{}", setup_time),
+    fmt::format("{}", generation_time),
+    fmt::format("{}", trace_time),
+    fmt::format("{}", end_to_end_time),
+    fmt::format("{}", end_to_end_rps),
+    fmt::format("{}", trace_only_rps),
+    fmt::format("{}", wall_time)
+  };
+
+  if (output_format == "csv") {
+    std::cout << fmt::format("{}\n", fmt::join(csv_columns, ","));
+    std::cout << fmt::format("{}\n", fmt::join(csv_values, ","));
+  } else {
+    std::cout << "XDG ray benchmark\n";
+    std::cout << "----------------------------------------\n";
+    std::cout << "Model                  : " << model_name << "\n";
+    std::cout << "Mesh library           : " << mesh_str << "\n";
+    std::cout << "Ray tracing library    : " << rt_label << "\n";
+    std::cout << "Volume                 : " << volume << "\n";
+    std::cout << "Volume faces           : " << num_faces << "\n";
+    std::cout << "Rays                   : " << num_rays << "\n";
+    std::cout << "Seed                   : " << seed << "\n";
+    std::cout << "Source radius          : " << source_radius << "\n";
+    std::cout << "Origin                 : "
+              << origin.x << ", " << origin.y << ", " << origin.z << "\n";
+    std::cout << "----------------------------------------\n";
+    std::cout << "Initialisation time    : " << setup_time << " s\n";
+    std::cout << "Ray generation time    : " << generation_time << " s\n";
+    std::cout << "Ray tracing time       : " << trace_time << " s\n";
+    std::cout << "Generation + tracing   : " << end_to_end_time << " s\n";
+    std::cout << "Full wall-clock time   : " << wall_time << " s\n";
+    std::cout << "----------------------------------------\n";
+    std::cout << "End-to-end throughput  : " << end_to_end_rps << " rays/s\n";
+    std::cout << "Trace-only throughput  : " << trace_only_rps << " rays/s\n";
+  }
 
   return 0;
 }
