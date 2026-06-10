@@ -300,7 +300,7 @@ int main(int argc, char** argv)
     std::vector<Position> origins(num_rays);
     std::vector<Direction> directions(num_rays);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(runtime)
     for (std::size_t i = 0; i < num_rays; ++i) {
       std::uint32_t state = seed ^ static_cast<std::uint32_t>(i);
       auto sample = tools::benchmark::random_spherical_source(origin.x,
@@ -320,7 +320,7 @@ int main(int argc, char** argv)
     // Trace rays
     trace_timer.start();
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(runtime)
     for (std::size_t i = 0; i < num_rays; ++i) {
       (void) xdg->ray_fire(volume, origins[i], directions[i]);
     }
