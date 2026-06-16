@@ -154,7 +154,23 @@ int main(int argc, char** argv)
 
   xdg->prepare_volume_for_raytracing(volume);
   xdg->ray_tracing_interface()->init();
+
+  const bool origin_in_volume = xdg->point_in_volume(volume, origin);
+  if (!origin_in_volume) {
+    const std::string origin_label = source_radius > 0.0 ? "source center" : "ray origin";
+    warning(fmt::format("The {} ({}, {}, {}) is not inside volume {}. Results may be skewed by fewer intersections with the BVH.",
+                        origin_label, origin.x, origin.y, origin.z, volume));
+  } else {
+    const double nearest_surface_distance = xdg->closest_distance(volume, origin);
+    if (source_radius > nearest_surface_distance) {
+      warning(fmt::format("The source radius ({}) is larger than the nearest surface distance ({}) from the source center to volume {}. "
+                          "Some sampled source points may be outside the volume.",
+                          source_radius, nearest_surface_distance, volume));
+    }
+  }
+
   setup_timer.stop();
+
   if (rt_lib == RTLibrary::EMBREE) {
     rt_label += " (" + std::to_string(XDGConfig::config().n_threads())
              + " CPU threads)";
@@ -162,39 +178,38 @@ int main(int argc, char** argv)
 
   const auto num_faces = mesh_manager->num_volume_faces(volume);
 
-  if (rt_lib == RTLibrary::EMBREE) {
-    // Generate random rays from source
-    generation_timer.start();
-    std::vector<Position> origins(num_rays);
-    std::vector<Direction> directions(num_rays);
 
-    #pragma omp parallel for schedule(runtime)
-    for (std::size_t i = 0; i < num_rays; ++i) {
-      std::uint32_t state = seed ^ static_cast<std::uint32_t>(i);
-      auto sample = tools::benchmark::random_spherical_source(origin.x,
-                                                              origin.y,
-                                                              origin.z,
-                                                              state,
-                                                              source_radius);
-      origins[i] = Position(sample.position[0],
-                            sample.position[1],
-                            sample.position[2]);
-      directions[i] = Direction(sample.direction[0],
-                                sample.direction[1],
-                                sample.direction[2]);
-    }
-    generation_timer.stop();
+  // Generate random rays from source
+  generation_timer.start();
+  std::vector<Position> origins(num_rays);
+  std::vector<Direction> directions(num_rays);
 
-    // Trace rays
-    trace_timer.start();
-
-    #pragma omp parallel for schedule(runtime)
-    for (std::size_t i = 0; i < num_rays; ++i) {
-      (void) xdg->ray_fire(volume, origins[i], directions[i]);
-    }
-
-    trace_timer.stop();
+  #pragma omp parallel for schedule(runtime)
+  for (std::size_t i = 0; i < num_rays; ++i) {
+    std::uint32_t state = seed ^ static_cast<std::uint32_t>(i);
+    auto sample = tools::benchmark::random_spherical_source(origin.x,
+                                                            origin.y,
+                                                            origin.z,
+                                                            state,
+                                                            source_radius);
+    origins[i] = Position(sample.position[0],
+                          sample.position[1],
+                          sample.position[2]);
+    directions[i] = Direction(sample.direction[0],
+                              sample.direction[1],
+                              sample.direction[2]);
   }
+  generation_timer.stop();
+
+  // Trace rays
+  trace_timer.start();
+
+  #pragma omp parallel for schedule(runtime)
+  for (std::size_t i = 0; i < num_rays; ++i) {
+    (void) xdg->ray_fire(volume, origins[i], directions[i]);
+  }
+
+  trace_timer.stop();
 
   const double generation_time = generation_timer.elapsed();
   const double trace_time = trace_timer.elapsed();
@@ -258,7 +273,7 @@ int main(int argc, char** argv)
     std::cout << fmt::format("{}\n", fmt::join(csv_columns, ","));
     std::cout << fmt::format("{}\n", fmt::join(csv_values, ","));
   } else {
-    std::cout << "XDG ray benchmark\n";
+    std::cout << "\nXDG ray benchmark\n";
     std::cout << "----------------------------------------\n";
     std::cout << "Model                  : " << model_name << "\n";
     std::cout << "Mesh library           : " << mesh_str << "\n";
