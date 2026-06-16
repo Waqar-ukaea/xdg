@@ -66,10 +66,10 @@ struct CuBQLSurfaceMesh {
 struct CuBQLSurfaceBLAS {
   struct DD {
     CuBQLSurfaceMesh::DD mesh; // Mesh data device handle
-    cuBQL::bvh3d bvh; // B:AS device handle
+    cuBQL::bvh3f bvh; // BLAS device handle
   };
 
-  cuBQL::bvh3d bvh; // BLAS host handle
+  cuBQL::bvh3f bvh; // BLAS host handle
   CuBQLSurfaceMesh mesh; // Surface mesh host owner
 
   uint32_t num_prims {0};
@@ -103,11 +103,11 @@ struct CuBQLVolumeTLAS {
   struct DD {
     MeshID volume_id {ID_NONE};
     const SurfaceInstanceDD* surface_instances {nullptr};
-    cuBQL::bvh3d bvh; // TLAS device handle 
+    cuBQL::bvh3f bvh; // TLAS device handle
   };
 
   MeshID volume_id {ID_NONE};
-  cuBQL::bvh3d bvh; // TLAS host handle
+  cuBQL::bvh3f bvh; // TLAS host handle
   SurfaceInstanceDD* d_surface_instances {nullptr};
 
   uint32_t num_surface_instances {0};

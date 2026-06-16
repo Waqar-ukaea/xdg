@@ -11,6 +11,8 @@
 #include "cuBQL/queries/triangleData/math/rayTriangleIntersections.h"
 #include "cuBQL/traversal/rayQueries.h"
 
+#include <algorithm>
+
 namespace xdg {
 
 CuBQLRayTracer::CuBQLRayTracer()
@@ -78,7 +80,8 @@ CuBQLRayTracer::register_volume(const std::shared_ptr<MeshManager>& mesh_manager
 
 CuBQLSurfaceBLAS
 CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager,
-                                  MeshID surface_id)
+                                  MeshID surface_id,
+                                  double bounding_box_bump)
 {
   auto num_faces = mesh_manager->num_surface_faces(surface_id);
   auto vertices = mesh_manager->get_surface_vertices(surface_id);
@@ -129,12 +132,13 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
                     context_.gpuID,
                     context_.hostID);
 
-  auto* d_aabbs = static_cast<cuBQL::box3d*>
-    (omp_target_alloc(h_indices.size() * sizeof(cuBQL::box3d), context_.gpuID));
+  auto* d_aabbs = static_cast<cuBQL::box3f*>
+    (omp_target_alloc(h_indices.size() * sizeof(cuBQL::box3f), context_.gpuID));
   const auto num_primitives = static_cast<uint32_t>(h_indices.size());
 
   // TODO - Abstract this out into its own bounding_box creation function
-  #pragma omp target device(context_.gpuID) is_device_ptr(d_vertices, d_indices, d_aabbs)
+  #pragma omp target device(context_.gpuID) is_device_ptr(d_vertices, d_indices, d_aabbs) \
+    firstprivate(bounding_box_bump)
   #pragma omp teams distribute parallel for
   for (uint32_t primID = 0; primID < num_primitives; ++primID) {
     cuBQL::vec3i indices = d_indices[primID];
@@ -148,13 +152,17 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
     aabb.extend(B);
     aabb.extend(C);
 
-    d_aabbs[primID] = aabb;
+    const cuBQL::vec3d bump(bounding_box_bump);
+    aabb.lower = aabb.lower - bump;
+    aabb.upper = aabb.upper + bump;
+
+    d_aabbs[primID] = cuBQL::box3f(aabb);
   }
 
   cuBQL::BuildConfig blasBuildParams;
   // TODO - Try setting leaf params to 1 to see what it does
   // Check what default is for CUDA 
-  cuBQL::bvh3d bvh;
+  cuBQL::bvh3f bvh;
   cuBQL::build_omp_target(bvh, d_aabbs, num_faces, blasBuildParams, context_.gpuID);
 
   omp_target_free(d_aabbs, context_.gpuID);
@@ -187,28 +195,36 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   SurfaceTreeID tree = next_surface_tree_id();
   surface_trees_.push_back(tree);
   auto volume_surfaces = mesh_manager->get_volume_surfaces(volume_id);
-  std::vector<cuBQL::box3d> h_tlas_boxes;
+  std::vector<cuBQL::box3f> h_tlas_boxes;
   std::vector<CuBQLVolumeTLAS::SurfaceInstanceDD> h_surface_instances;
   h_tlas_boxes.reserve(volume_surfaces.size());
   h_surface_instances.reserve(volume_surfaces.size());
 
   for (const auto &surf : volume_surfaces) {
+    auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
+    const double max_parent_bbox_bump = std::max(bounding_box_bump(mesh_manager, forward_parent),
+                                                bounding_box_bump(mesh_manager, reverse_parent));
+
     if (!surface_to_blas_map_.count(surf)) {
-      surface_to_blas_map_[surf] = register_surface(mesh_manager, surf);
+      surface_to_blas_map_[surf] = register_surface(mesh_manager, surf, max_parent_bbox_bump);
     }
 
     CuBQLSurfaceBLAS& surface_blas = surface_to_blas_map_.at(surf);
-    auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
 
     // Store BLAS bounding boxes to build TLAS
     const auto surface_bounding_box = mesh_manager->surface_bounding_box(surf);
-    cuBQL::box3d surface_bounds;
-    surface_bounds.lower = cuBQL::vec3d(surface_bounding_box.min_x,
-                                        surface_bounding_box.min_y,
-                                        surface_bounding_box.min_z);
-    surface_bounds.upper = cuBQL::vec3d(surface_bounding_box.max_x,
-                                        surface_bounding_box.max_y,
-                                        surface_bounding_box.max_z);
+    cuBQL::box3d surface_bounds_dp;
+    surface_bounds_dp.lower = cuBQL::vec3d(surface_bounding_box.min_x,
+                                           surface_bounding_box.min_y,
+                                           surface_bounding_box.min_z);
+    surface_bounds_dp.upper = cuBQL::vec3d(surface_bounding_box.max_x,
+                                           surface_bounding_box.max_y,
+                                           surface_bounding_box.max_z);
+
+    const cuBQL::vec3d bump(max_parent_bbox_bump);
+    surface_bounds_dp.lower = surface_bounds_dp.lower - bump;
+    surface_bounds_dp.upper = surface_bounds_dp.upper + bump;
+    cuBQL::box3f surface_bounds(surface_bounds_dp);
 
     CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
     surface_instance.surface_blas = surface_blas.get_device_data();
@@ -230,11 +246,11 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     fatal_error("Volume {} has no surfaces; cannot build cuBQL surface tree", volume_id);
   }
 
-  auto* d_tlas_boxes = static_cast<cuBQL::box3d*>
-    (omp_target_alloc(h_tlas_boxes.size() * sizeof(cuBQL::box3d), context_.gpuID));
+  auto* d_tlas_boxes = static_cast<cuBQL::box3f*>
+    (omp_target_alloc(h_tlas_boxes.size() * sizeof(cuBQL::box3f), context_.gpuID));
   omp_target_memcpy(d_tlas_boxes,
                     h_tlas_boxes.data(),
-                    h_tlas_boxes.size() * sizeof(cuBQL::box3d),
+                    h_tlas_boxes.size() * sizeof(cuBQL::box3f),
                     0,
                     0,
                     context_.gpuID,

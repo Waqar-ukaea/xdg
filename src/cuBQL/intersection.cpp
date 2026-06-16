@@ -12,37 +12,40 @@ namespace xdg {
 // Core traversal and intersection routine for a single ray against a given volume tlas
 #pragma omp declare target
 static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
-                                          CuBQLRay ray,
+                                          CuBQLRay intersection_ray,
                                           CuBQLSurfaceHit* hit,
                                           int orientation,
                                           const MeshID* exclude_primitives,
                                           int exclude_count)
 {
-  cuBQL::ray3d world_ray;
-  world_ray.origin = ray.origin;
-  world_ray.direction = ray.direction;
-  world_ray.tMin = ray.tMin;
-  world_ray.tMax = hit->distance;
+  // cuBQL traverses the FP32 BVH with an FP32 ray; the original CuBQLRay
+  // remains the FP64 source of truth for the final triangle intersection.
+  cuBQL::ray3f traversal_ray;
+  traversal_ray.origin = cuBQL::vec3f(intersection_ray.origin);
+  traversal_ray.direction = cuBQL::vec3f(intersection_ray.direction);
+  // TODO: Is this truncation safe enough for tmin and tmax? Pretty sure embree/gprt does a similar truncation for ray bounds
+  traversal_ray.tMin = static_cast<float>(intersection_ray.tMin);
+  traversal_ray.tMax = static_cast<float>(hit->distance);
 
   CuBQLVolumeTLAS::SurfaceInstanceDD surface_instance;
 
-  auto enter_blas = [=, &surface_instance, &world_ray]
-    (cuBQL::ray3d& out_ray, cuBQL::bvh3d& out_bvh, int instance_id)
+  auto enter_blas = [=, &surface_instance, &traversal_ray]
+    (cuBQL::ray3f& out_ray, cuBQL::bvh3f& out_bvh, int instance_id)
   {
     surface_instance = volume_tlas.surface_instances[instance_id];
-    out_ray = world_ray;
+    out_ray = traversal_ray;
     out_bvh = surface_instance.surface_blas.bvh;
   };
 
-  auto intersect_prim = [=, &world_ray, &surface_instance]
-    (uint32_t prim_id) -> double
+  auto intersect_prim = [=, &traversal_ray, &surface_instance]
+    (uint32_t prim_id) -> float
   {
     const CuBQLSurfaceMesh::DD mesh = surface_instance.surface_blas.mesh;
     const MeshID primitive_ref = mesh.primitive_refs[prim_id];
 
     for (int i = 0; i < exclude_count; ++i) {
       if (exclude_primitives[i] == primitive_ref) {
-        return world_ray.tMax;
+        return traversal_ray.tMax;
       }
     }
 
@@ -61,18 +64,18 @@ static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
       normal = -normal;
     }
 
-    const double normal_dot_direction = dot(normal, world_ray.direction);
+    const double normal_dot_direction = dot(normal, intersection_ray.direction);
 
     if (orientation_cull(normal_dot_direction,
                          static_cast<HitOrientation>(orientation))) {
-      return world_ray.tMax;
+      return traversal_ray.tMax;
     }
 
     auto intersection = plucker_ray_tri_intersect(vertices,
-                                                  world_ray.origin,
-                                                  world_ray.direction,
-                                                  world_ray.tMax,
-                                                  world_ray.tMin,
+                                                  intersection_ray.origin,
+                                                  intersection_ray.direction,
+                                                  hit->distance,
+                                                  intersection_ray.tMin,
                                                   false,
                                                   0);
 
@@ -81,10 +84,12 @@ static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
       hit->surface = mesh.surface_id;
       hit->primitive = primitive_ref;
       hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
-      world_ray.tMax = intersection.t;
+      traversal_ray.tMax = static_cast<float>(intersection.t);
     }
 
-    return world_ray.tMax;
+    // Return value is only the FP32 traversal shrink distance. The accepted hit
+    // distance stored above remains the FP64 Plucker result.
+    return traversal_ray.tMax;
   };
 
   auto leave_blas = []() -> void {};
@@ -93,7 +98,7 @@ static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
                                                   leave_blas,
                                                   intersect_prim,
                                                   volume_tlas.bvh,
-                                                  world_ray);
+                                                  traversal_ray);
 }
 #pragma omp end declare target
 

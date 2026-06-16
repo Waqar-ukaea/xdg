@@ -73,7 +73,9 @@ public:
 
 private:
   CuBQLSurfaceBLAS
-  register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id);
+  register_surface(const std::shared_ptr<MeshManager>& mesh_manager,
+                   MeshID surface_id,
+                   double bounding_box_bump);
 
   void upload_volume_to_tlas_table_();
 
