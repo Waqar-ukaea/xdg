@@ -204,13 +204,20 @@ int main(int argc, char** argv)
   // Trace rays
   trace_timer.start();
 
-  #pragma omp parallel for schedule(runtime)
+  std::size_t num_hits = 0;
+
+  #pragma omp parallel for schedule(runtime) reduction(+:num_hits)
   for (std::size_t i = 0; i < num_rays; ++i) {
-    (void) xdg->ray_fire(volume, origins[i], directions[i]);
+    const auto hit = xdg->ray_fire(volume, origins[i], directions[i]);
+    if (hit.second != ID_NONE) num_hits++;
   }
 
   trace_timer.stop();
 
+  const std::size_t num_misses = num_rays - num_hits;
+  const double hit_fraction = num_rays > 0
+    ? static_cast<double>(num_hits) / static_cast<double>(num_rays)
+    : 0.0;
   const double generation_time = generation_timer.elapsed();
   const double trace_time = trace_timer.elapsed();
   const double end_to_end_time = generation_time + trace_time;
@@ -232,6 +239,9 @@ int main(int argc, char** argv)
     "volume",
     "num_faces",
     "num_rays",
+    "num_hits",
+    "num_misses",
+    "hit_fraction",
     "seed",
     "source_radius",
     "origin_x",
@@ -254,6 +264,9 @@ int main(int argc, char** argv)
     fmt::format("{}", volume),
     fmt::format("{}", num_faces),
     fmt::format("{}", num_rays),
+    fmt::format("{}", num_hits),
+    fmt::format("{}", num_misses),
+    fmt::format("{}", hit_fraction),
     fmt::format("{}", seed),
     fmt::format("{}", source_radius),
     fmt::format("{}", origin.x),
@@ -273,27 +286,36 @@ int main(int argc, char** argv)
     std::cout << fmt::format("{}\n", fmt::join(csv_columns, ","));
     std::cout << fmt::format("{}\n", fmt::join(csv_values, ","));
   } else {
-    std::cout << "\nXDG ray benchmark\n";
+    std::cout << "\nXDG ray benchmark results\n";
     std::cout << "----------------------------------------\n";
-    std::cout << "Model                  : " << model_name << "\n";
-    std::cout << "Mesh library           : " << mesh_str << "\n";
-    std::cout << "Ray tracing library    : " << rt_label << "\n";
-    std::cout << "Volume                 : " << volume << "\n";
-    std::cout << "Volume faces           : " << num_faces << "\n";
-    std::cout << "Rays                   : " << num_rays << "\n";
-    std::cout << "Seed                   : " << seed << "\n";
-    std::cout << "Source radius          : " << source_radius << "\n";
-    std::cout << "Origin                 : "
-              << origin.x << ", " << origin.y << ", " << origin.z << "\n";
+    std::cout << "Model                 : " << model_name << "\n";
+    std::cout << "Mesh library          : " << mesh_str << "\n";
+    std::cout << "Ray tracing library   : " << rt_label << "\n";
+    std::cout << "Volume                : " << volume << "\n";
+    std::cout << "Volume faces          : " << num_faces << "\n";
+    std::cout << "Seed                  : " << seed << "\n";
+    std::cout << "Rays                  : " << num_rays << "\n";
+    if (source_radius != 0.0) {
+      std::cout << "Source center         : "
+                << origin.x << ", " << origin.y << ", " << origin.z << "\n";
+      std::cout << "Source radius         : " << source_radius << "\n";
+    } else {
+      std::cout << "Origin (fixed)        : "
+                << origin.x << ", " << origin.y << ", " << origin.z << "\n";
+    }
     std::cout << "----------------------------------------\n";
-    std::cout << "Initialisation time    : " << setup_time << " s\n";
-    std::cout << "Ray generation time    : " << generation_time << " s\n";
-    std::cout << "Ray tracing time       : " << trace_time << " s\n";
-    std::cout << "Generation + tracing   : " << end_to_end_time << " s\n";
-    std::cout << "Full wall-clock time   : " << wall_time << " s\n";
+    std::cout << "Hits                  : " << num_hits << "\n";
+    std::cout << "Misses                : " << num_misses << "\n";
+    std::cout << "Hit fraction          : " << hit_fraction << "\n";
     std::cout << "----------------------------------------\n";
-    std::cout << "End-to-end throughput  : " << end_to_end_rps << " rays/s\n";
-    std::cout << "Trace-only throughput  : " << trace_only_rps << " rays/s\n";
+    std::cout << "Initialisation time   : " << setup_time << " s\n";
+    std::cout << "Ray generation time   : " << generation_time << " s\n";
+    std::cout << "Ray tracing time      : " << trace_time << " s\n";
+    std::cout << "Generation + tracing  : " << end_to_end_time << " s\n";
+    std::cout << "Full wall-clock time  : " << wall_time << " s\n";
+    std::cout << "----------------------------------------\n";
+    std::cout << "End-to-end throughput : " << end_to_end_rps << " rays/s\n";
+    std::cout << "Trace-only throughput : " << trace_only_rps << " rays/s\n";
   }
 
   return 0;
