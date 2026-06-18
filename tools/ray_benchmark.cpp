@@ -1,29 +1,16 @@
 #include <cstdint>
 #include <cstdlib>
-<<<<<<< HEAD
 #include <filesystem>
-=======
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-<<<<<<< HEAD
 #include "argparse/argparse.hpp"
 #include <fmt/ranges.h>
 
 #include "xdg/config.h"
-=======
-#ifdef XDG_OPENMP
-#include <omp.h>
-#endif
-
-#include "argparse/argparse.hpp"
-#include <fmt/ranges.h>
-
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
 #include "xdg/constants.h"
 #include "xdg/error.h"
 #include "xdg/timer.h"
@@ -33,23 +20,16 @@
 #include "ray_benchmark.h"
 
 #ifdef XDG_ENABLE_CUBQL
+#include <omp.h>
 #include "xdg/cuBQL/intersection.h"
 #include "xdg/cuBQL/ray_tracer.h"
 #endif
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
 using namespace xdg;
 
 int main(int argc, char** argv)
 {
-<<<<<<< HEAD
   argparse::ArgumentParser args("XDG Raytracing throughput benchmarking tool",
-=======
-  argparse::ArgumentParser args("XDG Ray Tracing throughput benchmarking tool",
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
                                 "1.0",
                                 argparse::default_arguments::help);
 
@@ -71,7 +51,6 @@ int main(int argc, char** argv)
     .scan<'u', std::uint32_t>();
 
   args.add_argument("-o", "-p", "--origin", "--position")
-<<<<<<< HEAD
     .help("Ray origin/position. Defaults to the center of the model bounding box")
     .scan<'g', double>()
     .nargs(3);
@@ -81,19 +60,12 @@ int main(int argc, char** argv)
     .implicit_value(true)
     .help("Use the queried volume bounding box center as the ray origin");
 
-=======
-    .default_value(std::vector<double>{0.0, 0.0, 0.0})
-    .help("Ray origin/position")
-    .scan<'g', double>()
-    .nargs(3);
-
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
   args.add_argument("-m", "--mesh-library")
     .help("Mesh library to use. One of (MOAB, LIBMESH)")
     .default_value("MOAB");
 
   args.add_argument("-rt", "--rt-library")
-    .help("Ray tracing library to use. Currently implemented: EMBREE")
+    .help("Ray tracing library to use. Currently implemented: EMBREE, CUBQL")
     .default_value("EMBREE");
 
   args.add_argument("-l", "--list")
@@ -106,14 +78,11 @@ int main(int argc, char** argv)
     .help("Radius of a scattered source around the origin")
     .scan<'g', double>();
 
-<<<<<<< HEAD
   args.add_argument("--format")
     .default_value("human")
     .choices("human", "csv")
     .help("stdout format. Human readable (default) or csv");
 
-=======
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
   args.add_description(
     "Benchmarks ray-fire throughput for a selected mesh volume. A source "
     "position is provided and ray directions are randomly generated from it.");
@@ -150,18 +119,12 @@ int main(int argc, char** argv)
   }
 
   const MeshID volume = args.get<int>("volume");
-<<<<<<< HEAD
   const std::string model_filename = args.get<std::string>("filename");
   const std::string model_name = std::filesystem::path(model_filename).filename().string();
   const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
   const std::uint32_t seed = args.get<std::uint32_t>("--seed");
   const double source_radius = args.get<double>("--source-radius");
   const std::string output_format = args.get<std::string>("--format");
-=======
-  const std::size_t num_rays = args.get<std::uint32_t>("--num-rays");
-  const std::uint32_t seed = args.get<std::uint32_t>("--seed");
-  const double source_radius = args.get<double>("--source-radius");
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
 
   Timer wall_timer;
   Timer setup_timer;
@@ -174,7 +137,6 @@ int main(int argc, char** argv)
   setup_timer.start();
   std::shared_ptr<XDG> xdg = XDG::create(mesh_lib, rt_lib);
   const auto& mesh_manager = xdg->mesh_manager();
-<<<<<<< HEAD
   mesh_manager->load_file(model_filename);
   mesh_manager->init();
 
@@ -216,91 +178,14 @@ int main(int argc, char** argv)
 
   setup_timer.stop();
 
-  if (rt_lib == RTLibrary::EMBREE) {
-    rt_label += " (" + std::to_string(XDGConfig::config().n_threads())
-             + " CPU threads)";
-  }
-
   const auto num_faces = mesh_manager->num_volume_faces(volume);
-
-
-  // Generate random rays from source
-  generation_timer.start();
-  std::vector<Position> origins(num_rays);
-  std::vector<Direction> directions(num_rays);
-
-  #pragma omp parallel for schedule(runtime)
-  for (std::size_t i = 0; i < num_rays; ++i) {
-    std::uint32_t state = seed ^ static_cast<std::uint32_t>(i);
-    auto sample = tools::benchmark::random_spherical_source(origin.x,
-                                                            origin.y,
-                                                            origin.z,
-                                                            state,
-                                                            source_radius);
-    origins[i] = Position(sample.position[0],
-                          sample.position[1],
-                          sample.position[2]);
-    directions[i] = Direction(sample.direction[0],
-                              sample.direction[1],
-                              sample.direction[2]);
-  }
-  generation_timer.stop();
-
-  // Trace rays
-  trace_timer.start();
-
   std::size_t num_hits = 0;
+  if (num_rays < 1) fatal_error("Number of rays must be greater than 0");
 
-  #pragma omp parallel for schedule(runtime) reduction(+:num_hits)
-  for (std::size_t i = 0; i < num_rays; ++i) {
-    const auto hit = xdg->ray_fire(volume, origins[i], directions[i]);
-    if (hit.second != ID_NONE) num_hits++;
-  }
-
-  trace_timer.stop();
-
-  const std::size_t num_misses = num_rays - num_hits;
-  const double hit_fraction = num_rays > 0
-    ? static_cast<double>(num_hits) / static_cast<double>(num_rays)
-    : 0.0;
-  const double generation_time = generation_timer.elapsed();
-  const double trace_time = trace_timer.elapsed();
-  const double end_to_end_time = generation_time + trace_time;
-  const double setup_time = setup_timer.elapsed();
-=======
-  mesh_manager->load_file(args.get<std::string>("filename"));
-  mesh_manager->init();
-
-  if (args.get<bool>("--list")) {
-    std::cout << "[" << fmt::format("{}", fmt::join(mesh_manager->volumes(), ", ")) << "]\n";
-    return 0;
-  }
-
-  const auto origin_arg = args.present<std::vector<double>>("--origin");
-  bool use_volume_center = args.get<bool>("--volume-center");
-  if (origin_arg && use_volume_center) {
-    warning("--volume-center enabled but an explicit origin was also provided. The explicit origin will be used and the volume center will be ignored.");
-    use_volume_center = false;
-  }
-
-  Position origin = mesh_manager->global_bounding_box().center();
-  if (origin_arg) {
-    origin = Position(origin_arg.value());
-  } else if (use_volume_center) {
-    origin = mesh_manager->volume_bounding_box(volume).center();
-  }
-
-  xdg->prepare_volume_for_raytracing(volume);
-  xdg->ray_tracing_interface()->init();
-  setup_timer.stop();
   if (rt_lib == RTLibrary::EMBREE) {
     rt_label += " (" + std::to_string(XDGConfig::config().n_threads())
              + " CPU threads)";
-  }
 
-  const auto num_faces = mesh_manager->num_volume_faces(volume);
-
-  if (rt_lib == RTLibrary::EMBREE) {
     // Generate random rays from source
     generation_timer.start();
     std::vector<Position> origins(num_rays);
@@ -323,86 +208,101 @@ int main(int argc, char** argv)
     }
     generation_timer.stop();
 
-    // Trace rays
-    trace_timer.start();
+    std::vector<MeshID> hit_surfaces(num_rays, ID_NONE);
 
+    trace_timer.start();
     #pragma omp parallel for schedule(runtime)
     for (std::size_t i = 0; i < num_rays; ++i) {
-      (void) xdg->ray_fire(volume, origins[i], directions[i]);
+      hit_surfaces[i] = xdg->ray_fire(volume, origins[i], directions[i]).second; // just return surface id of hit
     }
-
     trace_timer.stop();
+
+    // Count hits outside of timing region
+    for (std::size_t i = 0; i < num_rays; ++i) {
+      if (hit_surfaces[i] != ID_NONE) num_hits++;
+    }
   }
   else if (rt_lib == RTLibrary::CUBQL) {
     #ifndef XDG_ENABLE_CUBQL
-    fatal_error("This build was not compiled with cuBQL support (XDG_ENABLE_CUBQL=OFF).");
+      fatal_error("This build was not compiled with cuBQL support (XDG_ENABLE_CUBQL=OFF).");
     #else
     auto rti = std::dynamic_pointer_cast<CuBQLRayTracer>(xdg->ray_tracing_interface());
 
-    // Generate random rays and trace in one step
-    generation_timer.start();
+      // Generate random rays directly on the target device.
+      generation_timer.start();
 
-    const int gpu_id = omp_get_default_device();
+      const int gpu_id = omp_get_default_device();
 
-    CuBQLRay* d_rays = static_cast<CuBQLRay*>(
-      omp_target_alloc(num_rays * sizeof(CuBQLRay), gpu_id));
+      CuBQLRay* d_rays = static_cast<CuBQLRay*>(
+        omp_target_alloc(num_rays * sizeof(CuBQLRay), gpu_id));
 
-    if (!d_rays) {
-      fatal_error("Failed to allocate cuBQL ray buffer");
-    }
+      if (!d_rays) {
+        fatal_error("Failed to allocate cuBQL ray buffer");
+      }
 
-    const double origin_x = origin.x;
-    const double origin_y = origin.y;
-    const double origin_z = origin.z;
+      const double origin_x = origin.x;
+      const double origin_y = origin.y;
+      const double origin_z = origin.z;
 
-    #pragma omp target teams distribute parallel for device(gpu_id) is_device_ptr(d_rays)
-    for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
-      std::uint32_t state = seed ^ static_cast<std::uint32_t>(ray_id);
+      #pragma omp target teams distribute parallel for device(gpu_id) is_device_ptr(d_rays)
+      for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
+        std::uint32_t state = seed ^ static_cast<std::uint32_t>(ray_id);
 
-      auto sample = tools::benchmark::random_spherical_source(origin_x,
-                                                              origin_y,
-                                                              origin_z,
-                                                              state,
-                                                              source_radius);
+        auto sample = tools::benchmark::random_spherical_source(origin_x,
+                                                                origin_y,
+                                                                origin_z,
+                                                                state,
+                                                                source_radius);
 
-      CuBQLRay ray;
-      ray.origin = cuBQL::vec3d(sample.position[0],
-                                sample.position[1],
-                                sample.position[2]);
-      ray.direction = cuBQL::vec3d(sample.direction[0],
-                                  sample.direction[1],
-                                  sample.direction[2]);
-      ray.tMin = 0.0;
-      ray.tMax = INFTY;
-      ray.volume = volume;
+        CuBQLRay ray;
+        ray.origin = cuBQL::vec3d(sample.position[0],
+                                  sample.position[1],
+                                  sample.position[2]);
+        ray.direction = cuBQL::vec3d(sample.direction[0],
+                                     sample.direction[1],
+                                     sample.direction[2]);
+        ray.tMin = 0.0;
+        ray.tMax = INFTY;
+        ray.volume = volume;
 
-      d_rays[ray_id] = ray;
-    }
+        d_rays[ray_id] = ray;
+      }
 
-    CuBQLSurfaceHit* d_hits = static_cast<CuBQLSurfaceHit*>(
-      omp_target_alloc(num_rays * sizeof(CuBQLSurfaceHit), gpu_id));
+      CuBQLSurfaceHit* d_hits = static_cast<CuBQLSurfaceHit*>(
+        omp_target_alloc(num_rays * sizeof(CuBQLSurfaceHit), gpu_id));
 
-    if (!d_hits) {
+      if (!d_hits) {
+        omp_target_free(d_rays, gpu_id);
+        fatal_error("Failed to allocate cuBQL hit buffer");
+      }
+
+      generation_timer.stop();
+
+      // Trace rays and count hits on the target device.
+      trace_timer.start();
+      rti->ray_fire_batch(d_rays, d_hits, num_rays);
+      trace_timer.stop();
+
+      #pragma omp target teams distribute parallel for device(gpu_id) \
+        is_device_ptr(d_hits) reduction(+:num_hits)
+      for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
+        if (d_hits[ray_id].primitive != ID_NONE) num_hits++;
+      }
+
+      omp_target_free(d_hits, gpu_id);
       omp_target_free(d_rays, gpu_id);
-      fatal_error("Failed to allocate cuBQL hit buffer");
-    }
-
-    generation_timer.stop();
-
-    // Trace rays
-    trace_timer.start();
-    rti->ray_fire_batch(d_rays, d_hits, num_rays);
-    trace_timer.stop();
-
-    omp_target_free(d_hits, gpu_id);
-    omp_target_free(d_rays, gpu_id);
     #endif
   }
+
+  const std::size_t num_misses = num_rays - num_hits;
+  const double hit_fraction = num_rays > 0
+    ? static_cast<double>(num_hits) / static_cast<double>(num_rays)
+    : 0.0;
 
   const double generation_time = generation_timer.elapsed();
   const double trace_time = trace_timer.elapsed();
   const double end_to_end_time = generation_time + trace_time;
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
+  const double setup_time = setup_timer.elapsed();
   const double trace_only_rps = trace_time > 0.0
     ? static_cast<double>(num_rays) / trace_time
     : 0.0;
@@ -411,7 +311,6 @@ int main(int argc, char** argv)
     : 0.0;
 
   wall_timer.stop();
-<<<<<<< HEAD
   const double wall_time = wall_timer.elapsed();
 
   const std::vector<std::string> csv_columns {
@@ -499,24 +398,6 @@ int main(int argc, char** argv)
     std::cout << "End-to-end throughput : " << end_to_end_rps << " rays/s\n";
     std::cout << "Trace-only throughput : " << trace_only_rps << " rays/s\n";
   }
-=======
-
-  std::cout << "Random ray generation time   = "
-            << generation_time << "s" << std::endl;
-  std::cout << "Generation + tracing time    = "
-            << end_to_end_time << "s" << std::endl;
-  std::cout << "End-to-end throughput        = "
-            << end_to_end_rps << " rays/s" << std::endl;
-  std::cout << "Full wall-clock time         = "
-            << wall_timer.elapsed() << "s (post-argparse)" << std::endl;
-
-  std::cout << "----------------------------------------" << std::endl;
-  std::cout << "Ray tracing time (trace-only)= "
-            << trace_time << "s for " << num_rays << " rays" << std::endl;
-  std::cout << "Trace-only throughput        = "
-            << trace_only_rps << " rays/s" << std::endl;
-  std::cout << "----------------------------------------" << std::endl;
->>>>>>> 1003ecb (Working ray_benchmark miniapp)
 
   return 0;
 }
