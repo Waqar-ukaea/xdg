@@ -31,6 +31,7 @@ struct CuBQLSurfaceMesh {
     const cuBQL::vec3d* vertices {nullptr};
     const cuBQL::vec3i* indices {nullptr};
     const MeshID* primitive_refs {nullptr};
+    const cuBQL::vec3f* normals {nullptr};
   };
 
   // Topological metadata
@@ -40,6 +41,7 @@ struct CuBQLSurfaceMesh {
   cuBQL::vec3d* d_vertices {nullptr};
   cuBQL::vec3i* d_indices {nullptr};
   MeshID* d_primitive_refs {nullptr};
+  cuBQL::vec3f* d_normals {nullptr};
 
   uint32_t num_vertices {0};
   uint32_t num_triangles {0};
@@ -52,7 +54,8 @@ struct CuBQLSurfaceMesh {
       surface_id,
       d_vertices,
       d_indices,
-      d_primitive_refs
+      d_primitive_refs,
+      d_normals
     };
   }
 

@@ -62,10 +62,11 @@ static inline void intersect_surface_tree(CuBQLVolumeTLAS::DD volume_tlas,
       mesh.vertices[index.z]
     };
 
-    cuBQL::vec3d normal = cuBQL::cross(vertices[1] - vertices[0],
-                                       vertices[2] - vertices[0]);
-
-    double normal_dot_direction = dot(normal, intersection_ray.direction);
+    const cuBQL::vec3f normal = mesh.normals[prim_id];
+    double normal_dot_direction =
+      static_cast<double>(normal.x) * intersection_ray.direction.x +
+      static_cast<double>(normal.y) * intersection_ray.direction.y +
+      static_cast<double>(normal.z) * intersection_ray.direction.z;
 
     if (surface_instance.reverse_sense) {
       normal_dot_direction = -normal_dot_direction;
