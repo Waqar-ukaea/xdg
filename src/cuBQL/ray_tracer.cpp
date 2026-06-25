@@ -134,10 +134,12 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
 
   auto* d_aabbs = static_cast<cuBQL::box3f*>
     (omp_target_alloc(h_indices.size() * sizeof(cuBQL::box3f), context_.gpuID));
+  auto* d_normals = static_cast<cuBQL::vec3f*>
+    (omp_target_alloc(h_indices.size() * sizeof(cuBQL::vec3f), context_.gpuID));
   const auto num_primitives = static_cast<uint32_t>(h_indices.size());
 
   // TODO - Abstract this out into its own bounding_box creation function
-  #pragma omp target device(context_.gpuID) is_device_ptr(d_vertices, d_indices, d_aabbs) \
+  #pragma omp target device(context_.gpuID) is_device_ptr(d_vertices, d_indices, d_aabbs, d_normals) \
     firstprivate(bounding_box_bump)
   #pragma omp teams distribute parallel for
   for (uint32_t primID = 0; primID < num_primitives; ++primID) {
@@ -146,6 +148,8 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
     cuBQL::vec3d A = d_vertices[indices.x];
     cuBQL::vec3d B = d_vertices[indices.y];
     cuBQL::vec3d C = d_vertices[indices.z];
+
+    d_normals[primID] = cuBQL::vec3f(cuBQL::cross(B - A, C - A));
 
     cuBQL::box3d aabb;
     aabb.extend(A);
@@ -172,6 +176,7 @@ CuBQLRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manage
   surface_mesh.d_vertices = d_vertices;
   surface_mesh.d_indices = d_indices;
   surface_mesh.d_primitive_refs = d_primitive_refs;
+  surface_mesh.d_normals = d_normals;
   surface_mesh.num_vertices = h_vertices.size();
   surface_mesh.num_triangles = num_faces;
   surface_mesh.gpu_id = context_.gpuID;

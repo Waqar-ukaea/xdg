@@ -18,6 +18,10 @@ void CuBQLSurfaceMesh::release()
     omp_target_free(d_primitive_refs, gpu_id);
     d_primitive_refs = nullptr;
   }
+  if (d_normals) {
+    omp_target_free(d_normals, gpu_id);
+    d_normals = nullptr;
+  }
 }
 
 void CuBQLSurfaceBLAS::release()
