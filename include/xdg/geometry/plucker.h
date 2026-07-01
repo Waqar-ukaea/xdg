@@ -123,14 +123,6 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
     return {false, 0.0};
   }
 
-  // get the distance to intersection
-  const double inverse_sum =
-    1.0 / (plucker_coord0 + plucker_coord1 + plucker_coord2);
-
-  const dp::vec3 intersection = dp::vec3(plucker_coord0 * inverse_sum * vertices[2] +
-                                         plucker_coord1 * inverse_sum * vertices[0] +
-                                         plucker_coord2 * inverse_sum * vertices[1]);
-
   // To minimize numerical error, get index of largest magnitude direction.
   int idx = 0;
   double max_abs_dir = 0;
@@ -141,7 +133,16 @@ inline PluckerIntersectionResult plucker_ray_tri_intersect(dp::vec3 vertices[3],
     }
   }
 
-  dist_out = (intersection[idx] - origin[idx]) / direction[idx];
+  // get the distance to intersection
+  const double inverse_sum =
+    1.0 / (plucker_coord0 + plucker_coord1 + plucker_coord2);
+
+  const double intersection_component =
+    (plucker_coord0 * vertices[2][idx] +
+     plucker_coord1 * vertices[0][idx] +
+     plucker_coord2 * vertices[1][idx]) * inverse_sum;
+
+  dist_out = (intersection_component - origin[idx]) / direction[idx];
 
   // Barycentric coords check
   double u = plucker_coord2 * inverse_sum;
