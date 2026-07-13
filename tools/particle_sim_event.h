@@ -463,6 +463,41 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
   sim_data.advance_particle_queue.reset();
 }
 
+inline void process_collision_events(EventSimulationData& sim_data) 
+{
+  EventParticle* device_particles = sim_data.device_particles;
+  const int n_collisions = sim_data.collision_queue.size();
+
+  if (n_collisions == 0) {
+    return;
+  }
+
+  auto advance_queue = sim_data.advance_particle_queue.get_device_data();
+  auto collision_queue = sim_data.collision_queue.get_device_data();
+  const int gpu_id = sim_data.gpu_id;
+  const int max_events = sim_data.max_events_;
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_particles) \
+    firstprivate(advance_queue, collision_queue, max_events)
+  for (int i = 0; i < n_collisions; i++)
+  {
+    const uint32_t particle_idx = collision_queue.data[i].idx;
+    EventParticle& p = device_particles[particle_idx];
+
+    p.collide();
+    
+    if (p.n_events_ >= max_events) {
+      p.alive_ = false;
+      continue;
+    }
+
+    advance_queue.thread_safe_append({particle_idx});
+  }
+
+  sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.collision_queue.reset();
+}
 
 // void process_death_events();
 /*
