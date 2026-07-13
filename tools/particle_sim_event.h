@@ -160,6 +160,7 @@ struct EventParticle {
     rng_state_ = seed ^ id;
     n_events_ = 0;
     alive_ = true;
+    stuck_ = false;
   }
 
   void sample_collision_distance(double mfp)
@@ -202,7 +203,7 @@ struct EventParticle {
     last_surface_hit_ = ID_NONE;
   }
 
-  void mark_surface_hit(MeshID surface, double distance)
+  void store_surface_hit(MeshID surface, double distance)
   {
     surface_hit_ = surface;
     surface_hit_distance_ = distance;
@@ -222,6 +223,7 @@ struct EventParticle {
   std::uint32_t rng_state_ {0};
   int32_t n_events_ {0};
   bool alive_ {true};
+  bool stuck_ {false};
 };
 
 #ifdef _OPENMP
@@ -276,7 +278,8 @@ inline void transport_particle_event_based(EventSimulationData& sim_data) {
     fatal_error("Event particle refill is not implemented; n_particles must be <= max_particles_in_flight");
   }
 
-  sim_data.gpu_id = omp_get_default_device();
+  sim_data.ray_hits = sim_data.xdg_->allocate_ray_hits(sim_data.n_particles_);
+  sim_data.gpu_id = sim_data.ray_hits.device_id;
   sim_data.host_id = omp_get_initial_device();
 
   sim_data.device_particles = static_cast<EventParticle*>(
@@ -324,6 +327,8 @@ inline void transport_particle_event_based(EventSimulationData& sim_data) {
 
   omp_target_free(sim_data.device_particles, sim_data.gpu_id);
   sim_data.device_particles = nullptr;
+
+  sim_data.xdg_->free_ray_hits(sim_data.ray_hits);
 }
 
 inline void process_init_events(EventSimulationData& sim_data)
@@ -358,7 +363,105 @@ inline void process_init_events(EventSimulationData& sim_data)
   sim_data.advance_particle_queue.sync_size_device_to_host(); // ensure host side event scheduler knows the correct queue size
 }
 
+inline void process_advance_particle_events(EventSimulationData& sim_data) 
+{
+  const int n_advance = sim_data.advance_particle_queue.size();
 
+  if (n_advance == 0) 
+  {
+    // TODO - Once things are definitely working we can probably remove this warning/check
+    warning("Advance_particle_events launched with a queue size of 0. Early return called...");
+    return;
+  }
+
+  EventParticle* device_particles = sim_data.device_particles;
+  XDGRayHit* ray_hits = sim_data.ray_hits.data;
+  auto advance_queue = sim_data.advance_particle_queue.get_device_data();
+  auto surface_crossing_queue = sim_data.surface_crossing_queue.get_device_data();
+  auto collision_queue = sim_data.collision_queue.get_device_data();
+  const double mfp = sim_data.mfp_;
+  const int gpu_id = sim_data.gpu_id;
+
+  // rayhit packing kernel
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_particles, ray_hits) \
+    firstprivate(advance_queue)
+  for (int i = 0; i < n_advance; ++i) {
+    const uint32_t particle_idx = advance_queue.data[i].idx;
+    EventParticle& p = device_particles[particle_idx];
+
+    ray_hits[i].origin[0] = p.r_.x;
+    ray_hits[i].origin[1] = p.r_.y;
+    ray_hits[i].origin[2] = p.r_.z;
+    ray_hits[i].direction[0] = p.u_.x;
+    ray_hits[i].direction[1] = p.u_.y;
+    ray_hits[i].direction[2] = p.u_.z;
+    ray_hits[i].t_min = 0.0;
+    ray_hits[i].t_max = INFTY;
+    ray_hits[i].volume = p.volume_;
+    ray_hits[i].distance = INFTY;
+    ray_hits[i].surface = ID_NONE;
+    ray_hits[i].primitive = ID_NONE;
+    ray_hits[i].point_in_volume = OUTSIDE;
+  }
+
+
+  /*
+    XDG ray_fire_batch is host-orchestrated but operates on a device-resident
+    XDGRayHitBuffer. The particle kernels pack rays into that device buffer,
+    the host calls xdg->ray_fire_batch(), and a later particle kernel consumes
+    the hit results from the same device buffer.
+
+    This differs from OpenMC's GPU path, where Particle::event_advance() calls
+    the device-callable distance-to-boundary logic directly inside one OpenMP
+    target kernel. Here we instead call a ray packing kernel followed by xdg's 
+    ray_fire kernel and then the particle advance kernel but doing so should
+    allow us to benefit from GPU accelerated ray tracing against the CAD.
+  */
+
+  // Create a view over the actively packed portion of the preallocated ray-hit buffer
+  XDGRayHitBuffer active_hits {sim_data.ray_hits.data,
+                               static_cast<std::size_t>(n_advance),
+                               sim_data.ray_hits.device_id};
+
+  sim_data.xdg_->ray_fire_batch(active_hits); // Perform GPU-accelerated ray tracing via XDG backend
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_particles, ray_hits) \
+    firstprivate(advance_queue, surface_crossing_queue, collision_queue, mfp)
+  for (int i = 0; i < n_advance; i++) {
+    const uint32_t particle_idx = advance_queue.data[i].idx;
+    EventParticle& p = device_particles[particle_idx];
+    const XDGRayHit& hit = ray_hits[i];
+
+    // Set particle state to stuck. Also killed for now but we could tally the number of stuck particles later
+    if (hit.distance == 0.0) {
+      p.alive_ = false;
+      p.stuck_ = true;
+      continue;
+    }
+
+    // Set particle state to killed
+    if (hit.surface == ID_NONE) {
+      p.alive_ = false;
+      continue;
+    }
+
+    p.store_surface_hit(hit.surface, hit.distance);
+    p.sample_collision_distance(mfp);
+    p.advance();
+
+    if (p.collision_distance_ < p.surface_hit_distance_) {
+      collision_queue.thread_safe_append({particle_idx});
+    } else {
+      surface_crossing_queue.thread_safe_append({particle_idx});
+    }
+  }
+
+  sim_data.surface_crossing_queue.sync_size_device_to_host();
+  sim_data.collision_queue.sync_size_device_to_host();
+  sim_data.advance_particle_queue.reset();
+}
 
 
 // void process_death_events();
@@ -367,5 +470,5 @@ inline void process_init_events(EventSimulationData& sim_data)
   We are essentially just setting the particle.alive_ member to false. 
   I think a better approach is to actually just handle death as it happens. 
   Rather than waiting for everything a particle's death state should update when it 
-  occurs. So we don't both with a process_death_events() method.
+  occurs. So we don't bother with a process_death_events() method.
 */
