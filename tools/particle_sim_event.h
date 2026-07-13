@@ -317,22 +317,49 @@ inline void transport_particle_event_based(EventSimulationData& sim_data) {
   // #ifdef OPENMC_MPI
   // MPI_Barrier( mpi::intracomm );
   // #endif
+
+  sim_data.advance_particle_queue.release();
+  sim_data.surface_crossing_queue.release();
+  sim_data.collision_queue.release();
+
+  omp_target_free(sim_data.device_particles, sim_data.gpu_id);
+  sim_data.device_particles = nullptr;
+}
+
+inline void process_init_events(EventSimulationData& sim_data)
+{
+  // Match the history-based miniapp source initialization.
+  Position r {0.0, 0.0, 0.0};
+  Direction u {1.0, 0.0, 0.0};
+  MeshID volume = sim_data.xdg_->find_volume(r, u);
+
+  EventParticle* device_particles = sim_data.device_particles;
+  const int n_particles = static_cast<int>(sim_data.n_particles_);
+  const std::uint32_t seed = sim_data.seed_;
+  const int gpu_id = sim_data.gpu_id;
+  auto advance_queue = sim_data.advance_particle_queue.get_device_data();
+
+  if (!device_particles) {
+    fatal_error("Error allocating event particle device storage.");
+  }
+
+  sim_data.advance_particle_queue.reset();
+  sim_data.surface_crossing_queue.reset();
+  sim_data.collision_queue.reset();
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_particles) \
+    firstprivate(advance_queue, seed, r, u, volume)
+  for (int i = 0; i < n_particles; ++i) {
+    device_particles[i].initialize(static_cast<uint32_t>(i), seed, r, u, volume);
+    advance_queue.thread_safe_append({static_cast<uint32_t>(i)}); // no need for xs lookup so we just append particle to queue
+  }
+
+  sim_data.advance_particle_queue.sync_size_device_to_host(); // ensure host side event scheduler knows the correct queue size
 }
 
 
-/*
-  initialize position/direction
-  find starting volume (call this globally for all particles [in flight])
-  set global particle id
-  reset event counter
-  reset alive flag
-  reset ray history
-  reset pending surface hit / collision distance
-  initialize per-particle RNG seed if you stop using global drand48()
-  enqueue into advance queue
 
-  Essentially set up particle state (for all particles) ready to call advance_particle
-*/
 
 // void process_death_events();
 /*
