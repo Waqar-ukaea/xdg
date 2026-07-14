@@ -1,5 +1,6 @@
 set(TOOL_NAMES
 particle_sim
+particle_sim_event
 ray_fire
 ray_benchmark
 find_volume

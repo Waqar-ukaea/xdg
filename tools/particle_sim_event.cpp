@@ -9,7 +9,7 @@
 
 #include "argparse/argparse.hpp"
 
-#include "particle_sim.h"
+#include "particle_sim_event.h"
 
 using namespace xdg;
 
@@ -31,7 +31,7 @@ args.add_argument("-m", "--mfp")
     .help("Mean free path of the particles").scan<'g', double>();
 
 args.add_argument("-n", "--n-particles")
-    .default_value(100u)
+    .default_value(1000000u)
     .help("Number of particles to simulate").scan<'u', uint32_t>();
 
 args.add_argument("-e", "--max-events")
@@ -48,8 +48,8 @@ args.add_argument("-m", "--mesh-library")
     .default_value("MOAB");
 
 args.add_argument("-r", "--rt-library")
-    .help("Ray tracing library to use. One of (EMBREE, GPRT)")
-    .default_value("EMBREE");
+    .help("Ray tracing library to use. Event transport currently requires CUBQL")
+    .default_value("CUBQL");
 try {
   args.parse_args(argc, argv);
 }
@@ -59,10 +59,7 @@ catch (const std::runtime_error& err) {
   exit(0);
 }
 
-// Problem Setup
-srand48(42);
-
-SimulationData sim_data;
+EventSimulationData sim_data;
 
 // create a mesh manager
 std::string mesh_str = args.get<std::string>("--mesh-library");
@@ -73,6 +70,8 @@ if (rt_str == "EMBREE")
   rt_lib = RTLibrary::EMBREE;
 else if (rt_str == "GPRT")
   rt_lib = RTLibrary::GPRT;
+else if (rt_str == "CUBQL")
+  rt_lib = RTLibrary::CUBQL;
 else
   fatal_error("Invalid ray tracing library '{}' specified", rt_str);
 
@@ -105,8 +104,7 @@ sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
 sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
 sim_data.max_events_ = args.get<uint32_t>("--max-events");
 
-transport_particles(sim_data);
-// transport_particles_event_based(sim_data);
+transport_particle_event_based(sim_data);
 
 // report distances in each cell in a table
 write_message("Cell Track Lengths");
