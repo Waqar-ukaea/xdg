@@ -11,6 +11,7 @@
 
 #include "xdg/error.h"
 #include "xdg/mesh_manager_interface.h"
+#include "xdg/timer.h"
 #include "xdg/vec3da.h"
 #include "xdg/xdg.h"
 
@@ -303,6 +304,21 @@ struct EventParticle {
 #endif
 
 struct EventSimulationData {
+  struct Profiling {
+    double xdg_setup_s {0.0};
+    double transport_s {0.0};
+    double advance_total_s {0.0};
+    double advance_pack_rays_s {0.0};
+    double advance_ray_trace_s {0.0};
+    double advance_update_particles_s {0.0};
+    double collision_s {0.0};
+    double surface_crossing_s {0.0};
+    std::uint64_t advance_calls {0};
+    std::uint64_t collision_calls {0};
+    std::uint64_t surface_crossing_calls {0};
+    std::uint64_t rays_traced {0};
+  };
+
   std::shared_ptr<XDG> xdg_;
   double mfp_ {1.0};
   std::uint32_t seed_ {42};
@@ -320,6 +336,7 @@ struct EventSimulationData {
   ParticleEventQueue advance_particle_queue;
   ParticleEventQueue surface_crossing_queue;
   ParticleEventQueue collision_queue;
+  Profiling profiling;
 };
 
 void process_init_events(EventSimulationData& sim_data);
@@ -328,6 +345,13 @@ void process_surface_crossing_events(EventSimulationData& sim_data);
 void process_collision_events(EventSimulationData& sim_data);
 
 inline void transport_particle_event_based(EventSimulationData& sim_data) {
+  const double xdg_setup_s = sim_data.profiling.xdg_setup_s;
+  sim_data.profiling = {};
+  sim_data.profiling.xdg_setup_s = xdg_setup_s;
+
+  Timer transport_timer;
+  transport_timer.start();
+
   // MPI will be needed for multi GPU 
   // #ifdef OPENMC_MPI
   // MPI_Barrier( mpi::intracomm );
@@ -401,6 +425,9 @@ inline void transport_particle_event_based(EventSimulationData& sim_data) {
   sim_data.device_particles = nullptr;
 
   sim_data.xdg_->free_ray_hits(sim_data.ray_hits);
+
+  transport_timer.stop();
+  sim_data.profiling.transport_s += transport_timer.elapsed();
 }
 
 inline void process_init_events(EventSimulationData& sim_data)
@@ -446,6 +473,11 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
     return;
   }
 
+  Timer total_timer;
+  total_timer.start();
+  sim_data.profiling.advance_calls++;
+  sim_data.profiling.rays_traced += static_cast<std::uint64_t>(n_advance);
+
   EventParticle* device_particles = sim_data.device_particles;
   XDGRayHit* ray_hits = sim_data.ray_hits.data;
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
@@ -453,6 +485,9 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
   auto collision_queue = sim_data.collision_queue.get_device_data();
   const double mfp = sim_data.mfp_;
   const int gpu_id = sim_data.gpu_id;
+
+  Timer timer;
+  timer.start();
 
   // rayhit packing kernel
   #pragma omp target teams distribute parallel for device(gpu_id) \
@@ -482,6 +517,8 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
     ray_hits[i].normal[1] = 0.0;
     ray_hits[i].normal[2] = 0.0;
   }
+  timer.stop();
+  sim_data.profiling.advance_pack_rays_s += timer.elapsed();
 
 
   /*
@@ -502,8 +539,14 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
                                static_cast<std::size_t>(n_advance),
                                sim_data.ray_hits.device_id};
 
+  timer.reset();
+  timer.start();
   sim_data.xdg_->ray_fire_batch(active_hits); // Perform GPU-accelerated ray tracing via XDG backend
+  timer.stop();
+  sim_data.profiling.advance_ray_trace_s += timer.elapsed();
 
+  timer.reset();
+  timer.start();
   #pragma omp target teams distribute parallel for device(gpu_id) \
     is_device_ptr(device_particles, ray_hits) \
     firstprivate(advance_queue, surface_crossing_queue, collision_queue, mfp)
@@ -540,10 +583,15 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
       surface_crossing_queue.thread_safe_append({particle_idx});
     }
   }
+  timer.stop();
+  sim_data.profiling.advance_update_particles_s += timer.elapsed();
 
   sim_data.surface_crossing_queue.sync_size_device_to_host();
   sim_data.collision_queue.sync_size_device_to_host();
   sim_data.advance_particle_queue.reset();
+
+  total_timer.stop();
+  sim_data.profiling.advance_total_s += total_timer.elapsed();
 }
 
 inline void process_collision_events(EventSimulationData& sim_data) 
@@ -554,6 +602,10 @@ inline void process_collision_events(EventSimulationData& sim_data)
   if (n_collisions == 0) {
     return;
   }
+
+  Timer timer;
+  timer.start();
+  sim_data.profiling.collision_calls++;
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto collision_queue = sim_data.collision_queue.get_device_data();
@@ -580,6 +632,8 @@ inline void process_collision_events(EventSimulationData& sim_data)
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
   sim_data.collision_queue.reset();
+  timer.stop();
+  sim_data.profiling.collision_s += timer.elapsed();
 }
 
 inline void process_surface_crossing_events(EventSimulationData& sim_data)
@@ -590,6 +644,10 @@ inline void process_surface_crossing_events(EventSimulationData& sim_data)
   if (n_surface_crossings == 0) {
     return;
   }
+
+  Timer timer;
+  timer.start();
+  sim_data.profiling.surface_crossing_calls++;
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto surface_crossing_queue = sim_data.surface_crossing_queue.get_device_data();
@@ -615,6 +673,8 @@ inline void process_surface_crossing_events(EventSimulationData& sim_data)
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
   sim_data.surface_crossing_queue.reset();
+  timer.stop();
+  sim_data.profiling.surface_crossing_s += timer.elapsed();
 }
 
 // void process_death_events();
