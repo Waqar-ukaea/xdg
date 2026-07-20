@@ -2,6 +2,7 @@
 #define _XDG_CUBQL_TRIANGLES_H
 
 #include <cstdint>
+#include <limits>
 
 // Guards to prevent CUDA headers from being included in host code, which causes
 // failed compilation with LLVM-clang.
@@ -67,6 +68,9 @@ struct CuBQLSurfaceMesh {
   type is the compact, non-owning device-data view used during traversal.
 */
 struct CuBQLVolumeGroup {
+  // Constant for invalid primitive index, used to indicate no hit in traversal kernel
+  static constexpr std::uint32_t INVALID_BVH_PRIMITIVE = std::numeric_limits<std::uint32_t>::max();
+
   struct SurfaceDD {
     CuBQLSurfaceMesh::DD mesh;
 
