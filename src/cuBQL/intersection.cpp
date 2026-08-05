@@ -17,6 +17,38 @@ static inline float reject_candidate(const cuBQL::ray3f& traversal_ray)
   return traversal_ray.tMax;
 }
 
+static inline void store_surface_hit(CuBQLVolumeGroup::DD volume_group,
+                                     std::uint32_t prim_ref_index,
+                                     double distance,
+                                     const cuBQL::vec3d& direction,
+                                     CuBQLSurfaceHit* hit)
+{
+  const auto ref = volume_group.prim_refs[prim_ref_index];
+  const auto surface = volume_group.surfaces[ref.surface_index];
+  const auto mesh = surface.mesh;
+  const auto local_index = ref.primitive_index;
+  const cuBQL::vec3i vertex_indices = mesh.indices[local_index];
+
+  const cuBQL::vec3d vertex_a = mesh.vertices[vertex_indices.x];
+  const cuBQL::vec3d vertex_b = mesh.vertices[vertex_indices.y];
+  const cuBQL::vec3d vertex_c = mesh.vertices[vertex_indices.z];
+  const cuBQL::vec3d normal = cuBQL::cross(vertex_b - vertex_a,
+                                           vertex_c - vertex_a);
+
+  double normal_dot_direction = dot(normal, direction);
+  if (surface.reverse_sense) {
+    normal_dot_direction = -normal_dot_direction;
+  }
+
+  hit->distance = distance;
+  hit->surface = mesh.surface_id;
+  hit->primitive = mesh.primitive_ids[local_index];
+  hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
+  hit->next_volume = surface.next_volume;
+  hit->boundary_condition = surface.boundary_condition;
+  hit->normal = normal;
+}
+
 static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
                                           CuBQLRay intersection_ray,
                                           CuBQLSurfaceHit* hit,
@@ -34,7 +66,12 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
   traversal_ray.tMin = static_cast<float>(intersection_ray.tMin);
   traversal_ray.tMax = static_cast<float>(hit->distance);
 
-  auto intersect_prim = [=, &traversal_ray]
+  // Nearest hit state.
+  constexpr std::uint32_t invalid_bvh_primitive = static_cast<std::uint32_t>(-1);
+  double best_distance = hit->distance;
+  std::uint32_t best_prim_ref_index = invalid_bvh_primitive;
+
+  auto intersect_prim = [=, &traversal_ray, &best_distance, &best_prim_ref_index]
     (std::uint32_t bvh_primitive_index) -> float
   {
     const auto ref = volume_group.prim_refs[bvh_primitive_index];
@@ -43,13 +80,13 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
     const auto local_index = ref.primitive_index;
     const MeshID primitive_id = mesh.primitive_ids[local_index];
 
-    // Reject the previously hit primitive to avoid immediate self-intersection.
+    // Reject the previously hit primitive to avoid immediate self-intersection
     if (primitive_id == last_hit_primitive) {
       return reject_candidate(traversal_ray);
     }
 
-    // Scalar queries may provide an arbitrary primitive exclusion history.
-    // TODO - Think about how to provide arbitrary history checks for batch queries.
+    // Scalar queries may provide an arbitrary primitive exclusion history
+    // TODO - Think about how to provide arbitrary history checks for batch queries
     for (int i = 0; i < exclude_count; ++i) {
       if (exclude_primitives[i] == primitive_id) {
         return reject_candidate(traversal_ray);
@@ -80,30 +117,33 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
     auto intersection = plucker_ray_tri_intersect(vertices,
                                                   intersection_ray.origin,
                                                   intersection_ray.direction,
-                                                  hit->distance,
+                                                  best_distance,
                                                   intersection_ray.tMin,
                                                   false,
                                                   0);
     
-    // store ray payload if hit found
+    // Store only the best hit state needed to materialize the final hit after traversal
     if (intersection.hit) {
-      hit->distance = intersection.t;
-      hit->surface = mesh.surface_id;
-      hit->primitive = primitive_id;
-      hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
-      hit->next_volume = surface.next_volume;
-      hit->boundary_condition = surface.boundary_condition;
-      hit->normal = normal;
+      best_distance = intersection.t;
+      best_prim_ref_index = bvh_primitive_index;
       traversal_ray.tMax = static_cast<float>(intersection.t);
     }
 
     // Return value is only the FP32 traversal shrink distance. The accepted hit
-    // distance stored above remains the FP64 Plucker result.
+    // distance stored above remains the FP64 Plucker result
     return reject_candidate(traversal_ray);
   };
 
   // Single level traversal call for a shrinking ray query against the flattened BVH of the volume group.
   cuBQL::shrinkingRayQuery::forEachPrim(intersect_prim, volume_group.bvh, traversal_ray);
+
+  if (best_prim_ref_index != invalid_bvh_primitive) {
+    store_surface_hit(volume_group,
+                      best_prim_ref_index,
+                      best_distance,
+                      intersection_ray.direction,
+                      hit);
+  }
 }
 #pragma omp end declare target
 
@@ -229,9 +269,16 @@ intersect_surface_tree_batch(const cubql::Context& context,
     d_ray_hits[ray_id].point_in_volume = static_cast<std::int32_t>(hit.piv);
     d_ray_hits[ray_id].next_volume = hit.next_volume;
     d_ray_hits[ray_id].boundary_condition = static_cast<std::int32_t>(hit.boundary_condition);
-    d_ray_hits[ray_id].normal[0] = hit.normal.x;
-    d_ray_hits[ray_id].normal[1] = hit.normal.y;
-    d_ray_hits[ray_id].normal[2] = hit.normal.z;
+    if (hit.primitive != ID_NONE) {
+      const cuBQL::vec3d normal = cuBQL::normalize(hit.normal);
+      d_ray_hits[ray_id].normal[0] = normal.x;
+      d_ray_hits[ray_id].normal[1] = normal.y;
+      d_ray_hits[ray_id].normal[2] = normal.z;
+    } else {
+      d_ray_hits[ray_id].normal[0] = 0.0;
+      d_ray_hits[ray_id].normal[1] = 0.0;
+      d_ray_hits[ray_id].normal[2] = 0.0;
+    }
   }
 }
 
