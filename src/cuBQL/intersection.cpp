@@ -67,8 +67,9 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
   traversal_ray.tMax = static_cast<float>(hit->distance);
 
   // Nearest hit state.
+  constexpr std::uint32_t invalid_bvh_primitive = static_cast<std::uint32_t>(-1);
   double best_distance = hit->distance;
-  std::uint32_t best_prim_ref_index = CuBQLVolumeGroup::INVALID_BVH_PRIMITIVE;
+  std::uint32_t best_prim_ref_index = invalid_bvh_primitive;
 
   auto intersect_prim = [=, &traversal_ray, &best_distance, &best_prim_ref_index]
     (std::uint32_t bvh_primitive_index) -> float
@@ -136,7 +137,7 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
   // Single level traversal call for a shrinking ray query against the flattened BVH of the volume group.
   cuBQL::shrinkingRayQuery::forEachPrim(intersect_prim, volume_group.bvh, traversal_ray);
 
-  if (best_prim_ref_index != CuBQLVolumeGroup::INVALID_BVH_PRIMITIVE) {
+  if (best_prim_ref_index != invalid_bvh_primitive) {
     store_surface_hit(volume_group,
                       best_prim_ref_index,
                       best_distance,
@@ -268,9 +269,16 @@ intersect_surface_tree_batch(const cubql::Context& context,
     d_ray_hits[ray_id].point_in_volume = static_cast<std::int32_t>(hit.piv);
     d_ray_hits[ray_id].next_volume = hit.next_volume;
     d_ray_hits[ray_id].boundary_condition = static_cast<std::int32_t>(hit.boundary_condition);
-    d_ray_hits[ray_id].normal[0] = hit.normal.x;
-    d_ray_hits[ray_id].normal[1] = hit.normal.y;
-    d_ray_hits[ray_id].normal[2] = hit.normal.z;
+    if (hit.primitive != ID_NONE) {
+      const cuBQL::vec3d normal = cuBQL::normalize(hit.normal);
+      d_ray_hits[ray_id].normal[0] = normal.x;
+      d_ray_hits[ray_id].normal[1] = normal.y;
+      d_ray_hits[ray_id].normal[2] = normal.z;
+    } else {
+      d_ray_hits[ray_id].normal[0] = 0.0;
+      d_ray_hits[ray_id].normal[1] = 0.0;
+      d_ray_hits[ray_id].normal[2] = 0.0;
+    }
   }
 }
 
