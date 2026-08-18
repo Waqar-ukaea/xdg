@@ -7,6 +7,7 @@ point_in_volume
 overlap_check
 walk_elements
 tally_segments
+cubql_bvh_robustness
 )
 
 #===============================================================================
@@ -39,6 +40,10 @@ if (TARGET overlap-check)
     )
 endif()
 
-if (XDG_ENABLE_CUBQL AND TARGET ray-benchmark)
-    target_link_libraries(ray-benchmark PRIVATE $<BUILD_INTERFACE:cuBQL>)
+if (XDG_ENABLE_CUBQL)
+    foreach(target IN ITEMS ray-benchmark cubql-bvh-robustness)
+        if (TARGET ${target})
+            target_link_libraries(${target} PRIVATE $<BUILD_INTERFACE:cuBQL>)
+        endif()
+    endforeach()
 endif()

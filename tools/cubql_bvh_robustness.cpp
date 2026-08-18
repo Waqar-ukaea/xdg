@@ -11,6 +11,8 @@
 #include "xdg/vec3da.h"
 #include "xdg/xdg.h"
 
+#include "xdg/cuBQL/ray_tracer.h"
+
 #include "argparse/argparse.hpp"
 
 using namespace xdg;
@@ -44,7 +46,7 @@ int main(int argc, char** argv) {
 
   args.add_argument("-r", "--rt-library")
       .help("Ray tracing library to use. One of (EMBREE, GPRT, CUBQL)")
-      .default_value("EMBREE");
+      .default_value("CUBQL");
 
   auto& bvh_build_scope = args.add_mutually_exclusive_group();
   bvh_build_scope.add_argument("--single-volume-bvh")
@@ -119,6 +121,12 @@ else
   } else {
     xdg->prepare_raytracer();
     std::cout << "BVH construction: full model" << std::endl;
+  }
+
+  std::shared_ptr<CuBQLRayTracer> cubql_rti;
+  if (rt_lib == RTLibrary::CUBQL) {
+    cubql_rti = std::dynamic_pointer_cast<CuBQLRayTracer>(xdg->ray_tracing_interface());
+
   }
 
   Position origin = args.get<std::vector<double>>("--origin");
@@ -263,7 +271,21 @@ else
 
     xdg->free_ray_hits(ray_hits);
 
-    // Now lets return some BVH diagnostics for the queried volume
+    // Now return some BVH diagnostics for the queried volume.
+    if (cubql_rti) {
+      const auto& volume_groups = cubql_rti->volume_groups();
+      auto bad_tree_id = xdg->volume_to_surface_tree(volume);
+      const auto& bad_volume_group = volume_groups.at(bad_tree_id);
+      const auto& bad_bvh = bad_volume_group.bvh;
+
+      std::cout << "BVH diagnostics for bad_tree_id=" << bad_tree_id
+                << ": num_surfaces =" << bad_volume_group.num_surfaces
+                << " num_primitives =" << bad_volume_group.num_primitives
+                << " bvh.numNodes =" << bad_bvh.numNodes
+                << " bvh.numPrims =" << bad_bvh.numPrims
+                << " bvh.node_width =" << bad_bvh.node_width
+                << std::endl;
+    }
 
   } else {
     result = xdg->ray_fire(volume, origin, direction);

@@ -73,6 +73,12 @@ public:
                 const Direction& direction,
                 double& dist) const override;
 
+  const std::unordered_map<TreeID, CuBQLVolumeGroup> volume_groups()
+  {
+    return tree_to_volume_group_;
+  }
+
+
   void bvh_diagnostics(MeshID volume) const override;
 
 private:
@@ -91,6 +97,7 @@ private:
   std::vector<CuBQLVolumeGroup::DD> volume_to_group_;
   CuBQLVolumeGroup::DD* d_volume_to_group_ {nullptr};
   bool initialized_ {false};
+
 };
 
 } // namespace xdg
