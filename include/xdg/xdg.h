@@ -140,6 +140,11 @@ Direction surface_normal(MeshID surface,
   const TreeID volume_to_surface_tree(const MeshID volume) const {
     return volume_to_surface_tree_map_.at(volume);
   }
+
+  void bvh_diagnostics(MeshID volume) const
+  {
+    ray_tracing_interface_->bvh_diagnostics(volume);
+  }
 // Private methods
 private:
   double _triangle_volume_contribution(const PrimitiveRef& triangle) const;
