@@ -487,7 +487,7 @@ void CuBQLRayTracer::bvh_diagnostics(MeshID volume) const
   const int host_id = omp_get_initial_device();
 
   omp_target_memcpy(nodes_list.data(),
-                    bvh.nodes,
+                    bvh.nodes, // device pointer to BVH nodes
                     nodes_list.size() * sizeof(Node),
                     0, 0,
                     host_id,
