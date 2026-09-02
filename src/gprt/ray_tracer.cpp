@@ -2,6 +2,7 @@
 #include "gprt/gprt.h"
 #include "xdg/available_device_probe.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace xdg {
@@ -515,6 +516,106 @@ void GPRTRayTracer::check_ray_buffer_capacity(size_t N)
   }
 
   gprtBuildShaderBindingTable(context_, static_cast<GPRTBuildSBTFlags>(GPRT_SBT_GEOM | GPRT_SBT_RAYGEN));
+}
+
+XDGRayHitBuffer GPRTRayTracer::allocate_ray_hits(std::size_t count) const
+{
+  if (count == 0) {
+    warning("Request to allocate 0 length XDG ray-hit buffer; returning empty buffer");
+    return {};
+  }
+
+  auto allocation = std::make_unique<GPRTRayHitAllocation>();
+  allocation->device_buffer = gprtDeviceBufferCreate<XDGRayHit>(context_, count);
+  allocation->host_buffer = gprtHostBufferCreate<XDGRayHit>(context_, count);
+
+  XDGRayHitBuffer buffer;
+
+  buffer.data = gprtBufferGetDevicePointer(allocation->device_buffer);
+  buffer.count = count;
+  buffer.device_id = 0;
+  buffer.native_handle = allocation.release();
+
+  return buffer;
+}
+
+void GPRTRayTracer::upload_ray_hits(const XDGRayHitBuffer& buffer,
+                                    const XDGRayHit* host_data,
+                                    std::size_t count) const
+{
+  if (count == 0) {
+    warning("Request to upload empty XDG ray-hit buffer; returning without action");
+    return;
+  }
+
+  // get the allocation from the native handle
+  auto* allocation = static_cast<GPRTRayHitAllocation*>(buffer.native_handle);
+
+  // Copy into the persistently mapped host buffer, then transfer those records
+  // into the device-local buffer used by the ray tracing shaders.
+  XDGRayHit* host_buffer =
+    gprtBufferGetHostPointer(allocation->host_buffer, buffer.device_id);
+  std::copy_n(host_data, count, host_buffer);
+
+  gprtBufferCopy(context_,
+                 allocation->host_buffer,
+                 allocation->device_buffer,
+                 0,
+                 0,
+                 static_cast<std::uint32_t>(count),
+                 buffer.device_id,
+                 buffer.device_id);
+  gprtGraphicsSynchronize(context_);
+}
+
+void GPRTRayTracer::download_ray_hits(const XDGRayHitBuffer& buffer,
+                                      XDGRayHit* host_destination,
+                                      std::size_t count) const
+{
+  if (count == 0) {
+    warning("Request to download empty XDG ray-hit buffer; returning without action");
+    return;
+  }
+
+  auto* allocation = static_cast<GPRTRayHitAllocation*>(buffer.native_handle);
+
+  // Transfer results from device-local memory into the persistently mapped
+  // host buffer before copying them into the caller-owned array.
+  gprtBufferCopy(context_,
+                 allocation->device_buffer,
+                 allocation->host_buffer,
+                 0,
+                 0,
+                 static_cast<std::uint32_t>(count),
+                 buffer.device_id,
+                 buffer.device_id);
+  gprtGraphicsSynchronize(context_);
+
+  const XDGRayHit* host_buffer = gprtBufferGetHostPointer(allocation->host_buffer, buffer.device_id);
+  std::copy_n(host_buffer, count, host_destination);
+}
+
+void GPRTRayTracer::free_ray_hits(XDGRayHitBuffer& buffer) const
+{
+  if (!buffer.native_handle) {
+    warning("Request to free empty GPRT XDG ray-hit buffer; ignoring");
+    return;
+  }
+
+  gprtGraphicsSynchronize(context_);
+
+  auto* allocation = static_cast<GPRTRayHitAllocation*>(buffer.native_handle);
+  gprtBufferDestroy(allocation->device_buffer);
+  gprtBufferDestroy(allocation->host_buffer);
+  delete allocation;
+
+  buffer = {};
+}
+
+void GPRTRayTracer::ray_fire_batch(const XDGRayHitBuffer& buffer,
+                                   HitOrientation orientation) const
+{
+
 }
 
 } // namespace xdg

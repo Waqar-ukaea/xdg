@@ -26,6 +26,11 @@ enum class RayGenType {
   CLOSEST
 };
 
+struct GPRTRayHitAllocation {
+  GPRTBufferOf<XDGRayHit> device_buffer {nullptr};
+  GPRTBufferOf<XDGRayHit> host_buffer {nullptr};
+};
+
 struct gprtRayHit {
   size_t capacity = 1; // Max number of rays allocated 
   size_t size = 0;     // Current number of active rays 
@@ -120,6 +125,21 @@ class GPRTRayTracer : public RayTracer {
       fatal_error("Occlusion queries are not currently supported with GPRT ray tracer");
       return false;
     }
+
+    XDGRayHitBuffer allocate_ray_hits(std::size_t count) const override;
+
+    void upload_ray_hits(const XDGRayHitBuffer& buffer,
+                         const XDGRayHit* host_data,
+                         std::size_t count) const override;
+
+    void download_ray_hits(const XDGRayHitBuffer& buffer,
+                           XDGRayHit* host_destination,
+                           std::size_t count) const override;
+
+    void free_ray_hits(XDGRayHitBuffer& buffer) const override;
+
+    void ray_fire_batch(const XDGRayHitBuffer& buffer,
+                        HitOrientation orientation = HitOrientation::EXITING) const override;
     
   private:
     void check_ray_buffer_capacity(size_t N);
