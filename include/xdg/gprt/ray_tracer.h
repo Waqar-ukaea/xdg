@@ -99,6 +99,17 @@ class GPRTRayTracer : public RayTracer {
                                       HitOrientation orientation = HitOrientation::EXITING,
                                       std::vector<MeshID>* const exclude_primitives = nullptr) override;
 
+    /**
+     * Trace a host-resident batch and write the results back in place.
+     *
+     * This is primarily intended for backend cross-checks and benchmarks that
+     * need to replay identical rays through several APIs. Unlike repeated
+     * scalar ray_fire calls, the method performs one GPRT launch for the whole
+     * batch.
+     */
+    void ray_fire_host_batch(std::vector<XDGRayHit>& ray_hits,
+                             HitOrientation orientation = HitOrientation::EXITING);
+
     std::pair<double, MeshID> closest(TreeID scene,
                                       const Position& origin) override {};
 
@@ -148,6 +159,7 @@ class GPRTRayTracer : public RayTracer {
     // Internal GPRT Mappings
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
     std::unordered_map<SurfaceTreeID, GPRTBufferOf<gprt::Instance>> surface_tree_to_instance_buffer_map_; // Backing buffers for TLAS instances
+    std::unordered_map<MeshID, SurfaceTreeID> volume_to_surface_tree_; // Mesh volume to its volume TLAS tree
     std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
 
     // Global Tree IDs

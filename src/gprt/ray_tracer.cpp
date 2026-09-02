@@ -2,6 +2,8 @@
 #include "gprt/gprt.h"
 #include "xdg/available_device_probe.h"
 
+#include <limits>
+
 namespace xdg {
 
 GPRTRayTracer::GPRTRayTracer()
@@ -111,6 +113,7 @@ GPRTRayTracer::register_volume(const std::shared_ptr<MeshManager>& mesh_manager,
 {
   // set up ray tracing tree for boundary faces of the volume
   TreeID faces_tree = create_surface_tree(mesh_manager, volume_id);
+  volume_to_surface_tree_[volume_id] = faces_tree;
   // set up point location tree for any volumetric elements. TODO - currently not supported with GPRT
   TreeID element_tree = create_element_tree(mesh_manager, volume_id);
   return {faces_tree, element_tree}; // return TREE_NONE for element tree until implmemented
@@ -373,6 +376,95 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   else
     if (exclude_primitives) exclude_primitives->push_back(primitive_id);
   return {distance, surface};
+}
+
+void GPRTRayTracer::ray_fire_host_batch(std::vector<XDGRayHit>& ray_hits,
+                                        HitOrientation orientation)
+{
+  if (ray_hits.empty()) return;
+
+  const size_t count = ray_hits.size();
+  if (count > std::numeric_limits<uint32_t>::max()) {
+    fatal_error("GPRT batches cannot contain more than {} rays",
+                std::numeric_limits<uint32_t>::max());
+  }
+  check_ray_buffer_capacity(count);
+  rayHitBuffers_.size = count;
+
+  bool has_exclusions = false;
+  for (const auto& ray_hit : ray_hits) {
+    if (ray_hit.last_hit_primitive != ID_NONE) {
+      has_exclusions = true;
+      break;
+    }
+  }
+
+  int32_t* excluded_primitives = nullptr;
+  if (has_exclusions) {
+    gprtBufferResize(context_, excludePrimitivesBuffer_, count, false);
+    gprtBufferMap(excludePrimitivesBuffer_);
+    int32_t* host_exclusions = gprtBufferGetHostPointer(excludePrimitivesBuffer_);
+    for (size_t i = 0; i < count; ++i) {
+      host_exclusions[i] = ray_hits[i].last_hit_primitive;
+    }
+    gprtBufferUnmap(excludePrimitivesBuffer_);
+    excluded_primitives = gprtBufferGetDevicePointer(excludePrimitivesBuffer_);
+  }
+
+  gprtBufferMap(rayHitBuffers_.ray);
+  dblRay* rays = gprtBufferGetHostPointer(rayHitBuffers_.ray);
+
+  for (size_t i = 0; i < count; ++i) {
+    const auto& input = ray_hits[i];
+    const auto tree_it = volume_to_surface_tree_.find(input.volume);
+    if (tree_it == volume_to_surface_tree_.end()) {
+      gprtBufferUnmap(rayHitBuffers_.ray);
+      fatal_error("Volume {} has not been registered with the GPRT ray tracer",
+                  input.volume);
+    }
+
+    const SurfaceTreeID tree = tree_it->second;
+    const GPRTAccel volume = surface_volume_tree_to_accel_map.at(tree);
+
+    rays[i].volume_accel = gprtAccelGetDeviceAddress(volume);
+    rays[i].origin = {input.origin[0], input.origin[1], input.origin[2]};
+    rays[i].direction = {
+      input.direction[0], input.direction[1], input.direction[2]
+    };
+    rays[i].tMin = input.t_min;
+    rays[i].tMax = input.t_max;
+    rays[i].hitOrientation = orientation;
+    rays[i].volume_tree = tree;
+
+    if (input.last_hit_primitive != ID_NONE) {
+      rays[i].exclude_primitives = excluded_primitives + i;
+      rays[i].exclude_count = 1;
+    } else {
+      rays[i].exclude_primitives = nullptr;
+      rays[i].exclude_count = 0;
+    }
+  }
+
+  gprtBufferUnmap(rayHitBuffers_.ray);
+
+  const auto ray_gen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
+  gprtRayGenLaunch1D(context_, ray_gen, static_cast<uint32_t>(count));
+  gprtGraphicsSynchronize(context_);
+
+  gprtBufferMap(rayHitBuffers_.hit);
+  const dblHit* hits = gprtBufferGetHostPointer(rayHitBuffers_.hit);
+  for (size_t i = 0; i < count; ++i) {
+    if (hits[i].surf_id == ID_NONE) {
+      ray_hits[i].distance = INFTY;
+      ray_hits[i].surface = ID_NONE;
+      ray_hits[i].primitive = ID_NONE;
+    } else {
+      ray_hits[i].distance = hits[i].distance;
+      ray_hits[i].surface = hits[i].surf_id;
+      ray_hits[i].primitive = hits[i].primitive_id;
+    }
+  }
+  gprtBufferUnmap(rayHitBuffers_.hit);
 }
 
 void GPRTRayTracer::create_global_surface_tree()

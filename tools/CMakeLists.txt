@@ -2,6 +2,7 @@ set(TOOL_NAMES
 particle_sim
 ray_fire
 ray_benchmark
+ray_cross_check
 find_volume
 point_in_volume
 overlap_check
@@ -39,6 +40,14 @@ if (TARGET overlap-check)
     )
 endif()
 
-if (XDG_ENABLE_CUBQL AND TARGET ray-benchmark)
-    target_link_libraries(ray-benchmark PRIVATE $<BUILD_INTERFACE:cuBQL>)
+if (XDG_ENABLE_CUBQL)
+    foreach(target IN ITEMS ray-benchmark ray-cross-check)
+        if (TARGET ${target})
+            target_link_libraries(${target} PRIVATE $<BUILD_INTERFACE:cuBQL>)
+        endif()
+    endforeach()
+endif()
+
+if (XDG_ENABLE_GPRT AND TARGET ray-cross-check)
+    target_link_libraries(ray-cross-check PRIVATE $<BUILD_INTERFACE:gprt>)
 endif()

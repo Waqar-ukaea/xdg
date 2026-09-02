@@ -1,6 +1,7 @@
-#ifndef _XDG_DEVICE_RAY_H
-#define _XDG_DEVICE_RAY_H
+#ifndef XDG_DEVICE_RAY_H
+#define XDG_DEVICE_RAY_H
 
+#ifndef __SLANG__
 #include <cstddef>
 #include <cstdint>
 
@@ -32,4 +33,4 @@ struct XDGRayHitBuffer {
 
 } // namespace xdg
 
-#endif // include guard
+#endif // XDG_DEVICE_RAY_H
