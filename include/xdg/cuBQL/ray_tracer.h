@@ -75,8 +75,6 @@ public:
 
   void bvh_diagnostics(MeshID volume) const override;
 
-  void bvh_diagnostics(MeshID volume) const override;
-
 private:
   CuBQLSurfaceMesh
   register_surface(const std::shared_ptr<MeshManager>& mesh_manager,
