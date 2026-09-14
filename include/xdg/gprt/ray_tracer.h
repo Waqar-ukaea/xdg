@@ -16,7 +16,7 @@
 #include "gprt/gprt.h"
 #include "shared_structs.h"
 
-extern GPRTProgram dbl_deviceCode;
+extern GPRTProgram sp_deviceCode;
 namespace xdg {
 
 enum class RayGenType {
@@ -44,10 +44,9 @@ struct gprtRayHit {
 };
 
 struct GPRTSurfaceBuffers {
-  GPRTBufferOf<double3> vertices = nullptr;
-  GPRTBufferOf<float3> aabbs = nullptr;
+  GPRTBufferOf<float3> vertices = nullptr;
   GPRTBufferOf<uint3> connectivity = nullptr;
-  GPRTBufferOf<double3> normals = nullptr;
+  GPRTBufferOf<float3> normals = nullptr;
   GPRTBufferOf<GPRTPrimitiveRef> primitive_refs = nullptr;
 };
 
@@ -144,13 +143,13 @@ class GPRTRayTracer : public RayTracer {
   private:
     void check_ray_buffer_capacity(size_t N);
     
-    GPRTGeomOf<DPTriangleGeomData>
+    GPRTGeomOf<TriangleGeomData>
     register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id);
 
     // GPRT objects 
     GPRTContext context_;
-    GPRTProgram deviceCode_; // device code for float precision shaders
-    GPRTModule module_; // device code module for single precision shaders
+    GPRTProgram deviceCode_;
+    GPRTModule module_; // native single-precision triangle shaders
     GPRTAccel world_; 
     GPRTBuildParams buildParams_; //<! Build parameters for acceleration structures
 
@@ -159,8 +158,6 @@ class GPRTRayTracer : public RayTracer {
     GPRTRayGenOf<XDGRayHitRayGenData> batchRayGenProgram_ {nullptr};
 
     GPRTMissOf<void> missProgram_; 
-    GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
-    
     // Buffers 
     gprtRayHit rayHitBuffers_;
     GPRTBufferOf<int32_t> excludePrimitivesBuffer_; //<! Buffer for excluded primitives
@@ -168,13 +165,13 @@ class GPRTRayTracer : public RayTracer {
     
     // Geometry Type and Instances
     std::vector<gprt::Instance> globalBlasInstances_; //<! List of every BLAS instance stored in this ray tracer
-    GPRTGeomTypeOf<DPTriangleGeomData> trianglesGeomType_; //<! Geometry type for triangles
+    GPRTGeomTypeOf<TriangleGeomData> trianglesGeomType_;
 
     // Ray Generation parameters
     uint32_t numRayTypes_ = 1; // <! Number of ray types. Allows multiple shaders to be set to the same geometery
     
     // Mesh-to-Scene maps 
-    std::map<MeshID, GPRTGeomOf<DPTriangleGeomData>> surface_to_geometry_map_; //<! Map from mesh surface to GPRT geometry
+    std::map<MeshID, GPRTGeomOf<TriangleGeomData>> surface_to_geometry_map_;
     std::map<MeshID, GPRTAccel> surface_to_blas_map_; //<! Map from mesh surface to GPRT BLAS
     std::map<MeshID, GPRTSurfaceBuffers> surface_buffers_map_; //<! Backing buffers for cached surface geometry
 

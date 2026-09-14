@@ -105,6 +105,9 @@ int main(int argc, char** argv)
     rt_lib = RTLibrary::EMBREE;
   } else if (rt_str == "GPRT") {
     rt_lib = RTLibrary::GPRT;
+#ifdef XDG_GPRT_NATIVE_FP32
+    rt_label += " (native FP32 + hardware triangles)";
+#endif
   } else if (rt_str == "CUBQL") {
     rt_lib = RTLibrary::CUBQL;
   } else {

@@ -15,7 +15,7 @@ GPRTRayTracer::GPRTRayTracer()
 
   gprtRequestRayTypeCount(numRayTypes_); // Set the number of shaders which can be set to the same geometry
   context_ = gprtContextCreate();
-  module_ = gprtModuleCreate(context_, dbl_deviceCode);
+  module_ = gprtModuleCreate(context_, sp_deviceCode);
 
   rayHitBuffers_.capacity = 1; // Preallocate space for 1 ray
   rayHitBuffers_.ray = gprtDeviceBufferCreate<dblRay>(context_, rayHitBuffers_.capacity);
@@ -72,7 +72,6 @@ GPRTRayTracer::~GPRTRayTracer()
   // Destroy Buffers
   for (const auto& [surf, buffers] : surface_buffers_map_) {
     gprtBufferDestroy(buffers.vertices);
-    gprtBufferDestroy(buffers.aabbs);
     gprtBufferDestroy(buffers.connectivity);
     gprtBufferDestroy(buffers.normals);
     gprtBufferDestroy(buffers.primitive_refs);
@@ -99,12 +98,12 @@ void GPRTRayTracer::setup_shaders()
   // TODO: Add Occluded and closest raygen entry points
 
   missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
-  aabbPopulationProgram_ = gprtComputeCreate<DPTriangleGeomData>(context_, module_, "populate_aabbs");
-
-  // Create a "triangle" geometry type and set its closest-hit program
-  trianglesGeomType_ = gprtGeomTypeCreate<DPTriangleGeomData>(context_, GPRT_AABBS);
-  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 0, module_, "ray_fire_hit"); // closesthit for ray queries
-  gprtGeomTypeSetIntersectionProg(trianglesGeomType_, 0, module_, "DPTrianglePluckerIntersection"); // set intersection program for double precision rays
+  // Native GPRT triangle geometry allows the hardware ray-tracing pipeline to
+  // perform both BVH traversal and triangle intersection in single precision.
+  trianglesGeomType_ =
+    gprtGeomTypeCreate<TriangleGeomData>(context_, GPRT_TRIANGLES);
+  gprtGeomTypeSetClosestHitProg(trianglesGeomType_, 0, module_, "ray_fire_hit");
+  gprtGeomTypeSetAnyHitProg(trianglesGeomType_, 0, module_, "ray_fire_any_hit");
 }
 
 void GPRTRayTracer::init()
@@ -137,34 +136,22 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   surfaceBlasInstances.reserve(volume_surfaces.size());
 
   for (const auto &surf : volume_surfaces) {
-    GPRTGeomOf<DPTriangleGeomData> surfaceGeometry;
+    GPRTGeomOf<TriangleGeomData> surfaceGeometry;
     GPRTAccel blas = nullptr;
 
     if (mesh_manager->get_surface_face_type(surf) == SurfaceFaceType::QUAD) {
       fatal_error("GPRT quad intersection not implemented (surface {})", surf);
     }
 
-    DPTriangleGeomData* geom_data = nullptr;
+    TriangleGeomData* geom_data = nullptr;
     auto [forward_parent, reverse_parent] = mesh_manager->get_parent_volumes(surf);
-    auto max_parent_bbox_bump = std::max(bounding_box_bump(mesh_manager, forward_parent),
-                                         bounding_box_bump(mesh_manager, reverse_parent));
 
     if (!surface_to_geometry_map_.count(surf)) {
       surfaceGeometry = register_surface(mesh_manager, surf);
       geom_data = gprtGeomGetParameters(surfaceGeometry);
-      geom_data->bounding_box_bump = max_parent_bbox_bump;
 
-      constexpr uint32_t workgroup_size = 256;
-      const uint32_t num_faces = static_cast<uint32_t>(geom_data->num_faces);
-      const uint32_t num_workgroups =
-          (num_faces + workgroup_size - 1) / workgroup_size;
-      gprtComputeLaunch(aabbPopulationProgram_,
-                        {num_workgroups, 1, 1},
-                        {workgroup_size, 1, 1},
-                        *geom_data);
-      gprtComputeSynchronize(context_);
-
-      blas = gprtAABBAccelCreate(context_, surfaceGeometry, buildParams_.buildMode);
+      blas = gprtTriangleAccelCreate(context_, surfaceGeometry,
+                                     buildParams_.buildMode);
       gprtAccelBuild(context_, blas, buildParams_);
 
       surface_to_blas_map_[surf] = blas;
@@ -210,21 +197,23 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   return tree;
 }
 
-GPRTGeomOf<DPTriangleGeomData>
+GPRTGeomOf<TriangleGeomData>
 GPRTRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager, MeshID surface_id)
 {
-  auto triangleGeom = gprtGeomCreate<DPTriangleGeomData>(context_, trianglesGeomType_);
-  DPTriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
+  auto triangleGeom = gprtGeomCreate<TriangleGeomData>(context_, trianglesGeomType_);
+  TriangleGeomData* geom_data = gprtGeomGetParameters(triangleGeom);
 
   auto num_faces = mesh_manager->num_surface_faces(surface_id);
   auto surface_faces = mesh_manager->get_surface_faces(surface_id);
 
   // Get storage for vertices
   auto vertices = mesh_manager->get_surface_vertices(surface_id);
-  std::vector<double3> dbl3Vertices;
-  dbl3Vertices.reserve(vertices.size());
+  std::vector<float3> flt3Vertices;
+  flt3Vertices.reserve(vertices.size());
   for (const auto &vertex : vertices) {
-    dbl3Vertices.push_back({vertex.x, vertex.y, vertex.z});
+    flt3Vertices.push_back({static_cast<float>(vertex.x),
+                            static_cast<float>(vertex.y),
+                            static_cast<float>(vertex.z)});
   }
 
   // Get storage for indices
@@ -236,13 +225,15 @@ GPRTRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager
   }
 
   // Get storage for normals
-  std::vector<double3> normals;
+  std::vector<float3> normals;
   std::vector<GPRTPrimitiveRef> primitive_refs;
   primitive_refs.reserve(num_faces);
   normals.reserve(num_faces);
   for (const auto &face : surface_faces) {
     auto norm = mesh_manager->face_normal(face);
-    normals.push_back({norm.x, norm.y, norm.z});
+    normals.push_back({static_cast<float>(norm.x),
+                       static_cast<float>(norm.y),
+                       static_cast<float>(norm.z)});
     GPRTPrimitiveRef prim_ref;
     prim_ref.id = face;
     primitive_refs.push_back(prim_ref);
@@ -250,24 +241,23 @@ GPRTRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager
 
   // Create device buffers
   GPRTSurfaceBuffers surface_buffers; // store in struct for lifetime management outside this function
-  surface_buffers.vertices = gprtDeviceBufferCreate<double3>(context_, dbl3Vertices.size(), dbl3Vertices.data());
-  surface_buffers.aabbs = gprtDeviceBufferCreate<float3>(context_, 2*num_faces, 0); // AABBs for each triangle
-  gprtAABBsSetPositions(triangleGeom, surface_buffers.aabbs, num_faces, 2*sizeof(float3), 0);
+  surface_buffers.vertices = gprtDeviceBufferCreate<float3>(
+    context_, flt3Vertices.size(), flt3Vertices.data());
   surface_buffers.connectivity = gprtDeviceBufferCreate<uint3>(context_, ui3Indices.size(), ui3Indices.data());
-  surface_buffers.normals = gprtDeviceBufferCreate<double3>(context_, num_faces, normals.data());
+  surface_buffers.normals = gprtDeviceBufferCreate<float3>(context_, num_faces, normals.data());
   surface_buffers.primitive_refs = gprtDeviceBufferCreate<GPRTPrimitiveRef>(context_, num_faces, primitive_refs.data()); // Buffer for primitive sense
 
+  gprtTrianglesSetVertices(triangleGeom, surface_buffers.vertices,
+                           flt3Vertices.size());
+  gprtTrianglesSetIndices(triangleGeom, surface_buffers.connectivity,
+                          ui3Indices.size());
+
   // Set user data for the triangle geometry
-  geom_data->vertex = gprtBufferGetDevicePointer(surface_buffers.vertices);
-  geom_data->index = gprtBufferGetDevicePointer(surface_buffers.connectivity);
-  geom_data->aabbs = gprtBufferGetDevicePointer(surface_buffers.aabbs);
   geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   geom_data->ray_hits = nullptr;
   geom_data->surf_id = surface_id;
   geom_data->normals = gprtBufferGetDevicePointer(surface_buffers.normals);
   geom_data->primitive_refs = gprtBufferGetDevicePointer(surface_buffers.primitive_refs);
-  geom_data->num_faces = num_faces;
-  geom_data->bounding_box_bump = 0.0;
   geom_data->forward_vol = ID_NONE;
   geom_data->reverse_vol = ID_NONE;
   geom_data->forward_tree = TREE_NONE;
@@ -314,10 +304,32 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
   Direction directionUsed = (direction != nullptr) ? Direction{direction->x, direction->y, direction->z}
                             : Direction{1. / std::sqrt(2.0), 1. / std::sqrt(2.0), 0.0};
 
+  double direction_length = std::sqrt(directionUsed.x * directionUsed.x
+                                    + directionUsed.y * directionUsed.y
+                                    + directionUsed.z * directionUsed.z);
+  if (direction_length == 0.0) {
+    directionUsed = Direction{1. / std::sqrt(2.0),
+                              1. / std::sqrt(2.0), 0.0};
+    direction_length = 1.0;
+  }
+
+  // Native FP32 triangle traversal does not report a hit exactly at t=0.
+  // Bias the classification point a few float ULPs opposite the supplied
+  // direction. This preserves the established convention that an outward
+  // direction classifies a point on the boundary as inside.
+  const double coordinate_scale = std::max({1.0, std::abs(point.x),
+                                             std::abs(point.y), std::abs(point.z)});
+  const double boundary_bias = 8.0 * std::numeric_limits<float>::epsilon()
+                             * coordinate_scale;
+  const Direction unit_direction = directionUsed / direction_length;
+  const Position classification_point = point - boundary_bias * unit_direction;
+
   gprtBufferMap(rayHitBuffers_.ray); // Update the ray input buffer
   dblRay* ray = gprtBufferGetHostPointer(rayHitBuffers_.ray);
   ray[0].volume_accel = gprtAccelGetDeviceAddress(volume);
-  ray[0].origin = {point.x, point.y, point.z};
+  ray[0].origin = {classification_point.x,
+                   classification_point.y,
+                   classification_point.z};
   ray[0].direction = {directionUsed.x, directionUsed.y, directionUsed.z};
   ray[0].tMax = INFTY; // Set a large distance limit
   ray[0].tMin = 0.0;
@@ -340,7 +352,7 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
   }
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
 
-  dblRayFirePushConstants push_constants {};
+  RayFirePushConstants push_constants {};
   push_constants.hitOrientation = HitOrientation::ANY;
   push_constants.batch_mode = 0;
   gprtRayGenLaunch1D(context_, rayGen, 1, push_constants); // Launch raygen shader (entry point to RT pipeline)
@@ -400,7 +412,7 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   }
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
 
-  dblRayFirePushConstants push_constants {};
+  RayFirePushConstants push_constants {};
   push_constants.hitOrientation = orientation;
   push_constants.batch_mode = 0;
   gprtRayGenLaunch1D(context_, rayGen, 1, push_constants); // Launch raygen shader (entry point to RT pipeline)
@@ -491,7 +503,7 @@ void GPRTRayTracer::ray_fire_host_batch(std::vector<XDGRayHit>& ray_hits,
   gprtBufferUnmap(rayHitBuffers_.ray);
 
   const auto ray_gen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
-  dblRayFirePushConstants push_constants {};
+  RayFirePushConstants push_constants {};
   push_constants.hitOrientation = orientation;
   push_constants.batch_mode = 0;
   gprtRayGenLaunch1D(context_, ray_gen, static_cast<uint32_t>(count),
@@ -550,7 +562,7 @@ void GPRTRayTracer::check_ray_buffer_capacity(size_t N)
 
   // Since we have resized the ray buffers, we need to update the geom_data->rayIn pointers in all geometries too
   for (auto const& [surf, geom] : surface_to_geometry_map_) {
-    DPTriangleGeomData* geom_data = gprtGeomGetParameters(geom);
+    TriangleGeomData* geom_data = gprtGeomGetParameters(geom);
     geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
   }
 
@@ -724,7 +736,7 @@ void GPRTRayTracer::ray_fire_batch(const XDGRayHitBuffer& buffer,
 
   bind_batch_ray_hits(buffer.data);
 
-  dblRayFirePushConstants push_constants {};
+  RayFirePushConstants push_constants {};
   push_constants.hitOrientation = orientation;
   push_constants.batch_mode = 1;
 

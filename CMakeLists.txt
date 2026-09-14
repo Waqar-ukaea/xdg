@@ -237,7 +237,7 @@ list(APPEND xdg_sources
 src/gprt/ray_tracer.cpp
 )
 list(APPEND xdg_device_codes
-dbl_deviceCode
+sp_deviceCode
 )
 
 endif()
@@ -358,7 +358,10 @@ if (XDG_ENABLE_EMBREE)
 endif()
 
 if (XDG_ENABLE_GPRT)
-  target_compile_definitions(xdg PUBLIC XDG_ENABLE_GPRT)
+  target_compile_definitions(xdg PUBLIC
+    XDG_ENABLE_GPRT
+    XDG_GPRT_NATIVE_FP32
+  )
   target_link_options(xdg PRIVATE -Wl,--unresolved-symbols=ignore-in-shared-libs)
 endif()
 
@@ -385,7 +388,7 @@ if (XDG_ENABLE_EMBREE)
 endif()
 
 if (XDG_ENABLE_GPRT)
-  # Compile device code for each slang file (currently only dbl_deviceCode.slang)
+  # Compile device code for each GPRT Slang source.
   foreach(device_code ${xdg_device_codes})
     embed_devicecode(
     OUTPUT_TARGET
@@ -443,7 +446,7 @@ if (TARGET gprt)
     )
 endif()
 
-# Install targets for each slang file compiled (currently only dbl_deviceCode)
+# Install targets for each compiled Slang source.
 foreach(device_code ${xdg_device_codes})
   install(TARGETS ${device_code}
     EXPORT xdg-targets

@@ -30,26 +30,17 @@ struct dblHit
   xdg::PointInVolume piv; // Point in volume check result (0 for outside, 1 for inside)
 };
 
-/* variables for double precision triangle mesh geometry */
-struct DPTriangleGeomData {
-  // TODO: There are definitely some redundant variables here once some of the
-  // other GPRT PRs are merged I will do a cleanup pass through the code
-  double3 *vertex; // vertex buffer
-  float3 *aabbs; // AABB buffer 
-  uint3 *index;  // index buffer
-  double3 *normals; // normals buffer
+/* Shader data associated with native single-precision triangle geometry. */
+struct TriangleGeomData {
+  float3 *normals;
   int surf_id;
-  int2 vols;
   int forward_vol;
   int reverse_vol;
-  dblRay *ray; // double precision rays
-  xdg::XDGRayHit *ray_hits; // shared XDG batch ray/hit records
-  xdg::HitOrientation hitOrientation;
-  int forward_tree; // TreeID of the forward volume
-  int reverse_tree; // TreeID of the reverse volume
+  dblRay *ray;
+  xdg::XDGRayHit *ray_hits;
+  int forward_tree;
+  int reverse_tree;
   GPRTPrimitiveRef* primitive_refs;
-  int num_faces; // Number of faces in the geometry
-  double bounding_box_bump; // Bounding box expansion for this geometry
   xdg::SurfaceBoundaryCondition boundary_condition;
 };
 
@@ -67,9 +58,7 @@ struct XDGRayHitRayGenData {
 /* A small structure of constants that can change every frame without rebuilding the
   shader binding table. (must be 128 bytes or less) */
 
-struct dblRayFirePushConstants {
-  double tMax;
-  double tMin;
+struct RayFirePushConstants {
   xdg::HitOrientation hitOrientation;
   int batch_mode;
 };
