@@ -80,6 +80,9 @@ GPRTRayTracer::~GPRTRayTracer()
   gprtBufferDestroy(rayHitBuffers_.ray);
   gprtBufferDestroy(rayHitBuffers_.hit);
   gprtBufferDestroy(excludePrimitivesBuffer_);
+  if (volumeAccelBuffer_) {
+    gprtBufferDestroy(volumeAccelBuffer_);
+  }
 
   // Destroy module and context
   gprtModuleDestroy(module_);
@@ -91,6 +94,8 @@ void GPRTRayTracer::setup_shaders()
   // Set up ray generation and miss programs
   rayGenPrograms_[RayGenType::RAY_FIRE] = gprtRayGenCreate<dblRayGenData>(context_, module_, "ray_fire");
   rayGenPrograms_[RayGenType::POINT_IN_VOLUME] = gprtRayGenCreate<dblRayGenData>(context_, module_, "point_in_volume");
+  batchRayGenProgram_ =
+    gprtRayGenCreate<XDGRayHitRayGenData>(context_, module_, "ray_fire_batch");
   // TODO: Add Occluded and closest raygen entry points
 
   missProgram_ = gprtMissCreate<void>(context_, module_, "ray_fire_miss");
@@ -104,6 +109,8 @@ void GPRTRayTracer::setup_shaders()
 
 void GPRTRayTracer::init()
 {
+  update_volume_accel_buffer();
+
   // Build the shader binding table (SBT) after all shader programs and acceleration structures are set up
   gprtBuildShaderBindingTable(context_, GPRT_SBT_ALL);
   // Note that should we need to update any shaders or acceleration structures, we must rebuild the SBT
@@ -147,9 +154,13 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
       geom_data = gprtGeomGetParameters(surfaceGeometry);
       geom_data->bounding_box_bump = max_parent_bbox_bump;
 
+      constexpr uint32_t workgroup_size = 256;
+      const uint32_t num_faces = static_cast<uint32_t>(geom_data->num_faces);
+      const uint32_t num_workgroups =
+          (num_faces + workgroup_size - 1) / workgroup_size;
       gprtComputeLaunch(aabbPopulationProgram_,
-                        {static_cast<uint32_t>(geom_data->num_faces), 1, 1},
-                        {1, 1, 1},
+                        {num_workgroups, 1, 1},
+                        {workgroup_size, 1, 1},
                         *geom_data);
       gprtComputeSynchronize(context_);
 
@@ -168,12 +179,12 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
     instance.mask = 0xff; // mask can be used to filter instances during ray traversal. 0xff ensures no filtering
     surfaceBlasInstances.push_back(instance);
 
-    // Always update per-volume info
+    // Store both parents so batch hits can recover the next topological volume.
+    geom_data->forward_vol = forward_parent;
+    geom_data->reverse_vol = reverse_parent;
     if (volume_id == forward_parent) {
-      geom_data->forward_vol = forward_parent;
       geom_data->forward_tree = tree;
     } else if (volume_id == reverse_parent) {
-      geom_data->reverse_vol = reverse_parent;
       geom_data->reverse_tree = tree;
     } else {
       fatal_error("Volume {} is not a parent of surface {}", volume_id, surf);
@@ -186,6 +197,15 @@ GPRTRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_mana
   gprtAccelBuild(context_, volume_tlas, buildParams_);
   surface_volume_tree_to_accel_map[tree] = volume_tlas;
   surface_tree_to_instance_buffer_map_[tree] = instanceBuffer;
+
+  if (volume_id < 0) {
+    fatal_error("Negative volume ID {} cannot index the GPRT TLAS table", volume_id);
+  }
+  const auto volume_index = static_cast<std::size_t>(volume_id);
+  if (volume_index >= volume_accel_handles_.size()) {
+    volume_accel_handles_.resize(volume_index + 1);
+  }
+  volume_accel_handles_[volume_index] = gprtAccelGetDeviceAddress(volume_tlas);
 
   return tree;
 }
@@ -242,6 +262,7 @@ GPRTRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager
   geom_data->index = gprtBufferGetDevicePointer(surface_buffers.connectivity);
   geom_data->aabbs = gprtBufferGetDevicePointer(surface_buffers.aabbs);
   geom_data->ray = gprtBufferGetDevicePointer(rayHitBuffers_.ray);
+  geom_data->ray_hits = nullptr;
   geom_data->surf_id = surface_id;
   geom_data->normals = gprtBufferGetDevicePointer(surface_buffers.normals);
   geom_data->primitive_refs = gprtBufferGetDevicePointer(surface_buffers.primitive_refs);
@@ -251,6 +272,21 @@ GPRTRayTracer::register_surface(const std::shared_ptr<MeshManager>& mesh_manager
   geom_data->reverse_vol = ID_NONE;
   geom_data->forward_tree = TREE_NONE;
   geom_data->reverse_tree = TREE_NONE;
+  geom_data->boundary_condition = UNSET;
+
+  const auto property = mesh_manager->get_surface_property(
+    surface_id, PropertyType::BOUNDARY_CONDITION);
+  if (property.value == "vacuum") {
+    geom_data->boundary_condition = VACUUM;
+  } else if (property.value == "reflecting" ||
+             property.value == "reflective") {
+    geom_data->boundary_condition = REFLECTIVE;
+  } else if (property.value == "transmission") {
+    geom_data->boundary_condition = TRANSMISSION;
+  } else {
+    fatal_error("Unsupported boundary condition '{}' on surface {}",
+                property.value, surface_id);
+  }
 
   surface_to_geometry_map_[surface_id] = triangleGeom;
   surface_buffers_map_[surface_id] = surface_buffers;
@@ -304,7 +340,10 @@ bool GPRTRayTracer::point_in_volume(SurfaceTreeID tree,
   }
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
 
-  gprtRayGenLaunch1D(context_, rayGen, 1); // Launch raygen shader (entry point to RT pipeline)
+  dblRayFirePushConstants push_constants {};
+  push_constants.hitOrientation = HitOrientation::ANY;
+  push_constants.batch_mode = 0;
+  gprtRayGenLaunch1D(context_, rayGen, 1, push_constants); // Launch raygen shader (entry point to RT pipeline)
   gprtGraphicsSynchronize(context_); // Ensure all GPU operations are complete before returning control flow to CPU
 
   // Retrieve the hit from the dblHit buffer
@@ -361,7 +400,10 @@ std::pair<double, MeshID> GPRTRayTracer::ray_fire(SurfaceTreeID tree,
   }
   gprtBufferUnmap(rayHitBuffers_.ray); // required to sync buffer back on GPU?
 
-  gprtRayGenLaunch1D(context_, rayGen, 1); // Launch raygen shader (entry point to RT pipeline)
+  dblRayFirePushConstants push_constants {};
+  push_constants.hitOrientation = orientation;
+  push_constants.batch_mode = 0;
+  gprtRayGenLaunch1D(context_, rayGen, 1, push_constants); // Launch raygen shader (entry point to RT pipeline)
   gprtGraphicsSynchronize(context_); // Ensure all GPU operations are complete before returning control flow to CPU
 
   // Retrieve the hit from the dblHit buffer
@@ -449,7 +491,11 @@ void GPRTRayTracer::ray_fire_host_batch(std::vector<XDGRayHit>& ray_hits,
   gprtBufferUnmap(rayHitBuffers_.ray);
 
   const auto ray_gen = rayGenPrograms_.at(RayGenType::RAY_FIRE);
-  gprtRayGenLaunch1D(context_, ray_gen, static_cast<uint32_t>(count));
+  dblRayFirePushConstants push_constants {};
+  push_constants.hitOrientation = orientation;
+  push_constants.batch_mode = 0;
+  gprtRayGenLaunch1D(context_, ray_gen, static_cast<uint32_t>(count),
+                     push_constants);
   gprtGraphicsSynchronize(context_);
 
   gprtBufferMap(rayHitBuffers_.hit);
@@ -516,6 +562,49 @@ void GPRTRayTracer::check_ray_buffer_capacity(size_t N)
   }
 
   gprtBuildShaderBindingTable(context_, static_cast<GPRTBuildSBTFlags>(GPRT_SBT_GEOM | GPRT_SBT_RAYGEN));
+}
+
+void GPRTRayTracer::update_volume_accel_buffer()
+{
+  auto* ray_gen_data = gprtRayGenGetParameters(batchRayGenProgram_);
+  active_batch_ray_hits_ = nullptr;
+  if (volume_accel_handles_.empty()) {
+    ray_gen_data->ray_hits = nullptr;
+    ray_gen_data->volume_accels = nullptr;
+    ray_gen_data->volume_accel_count = 0;
+    return;
+  }
+
+  if (volumeAccelBuffer_) {
+    gprtBufferDestroy(volumeAccelBuffer_);
+  }
+  volumeAccelBuffer_ =
+    gprtDeviceBufferCreate<SurfaceAccelerationStructure>(
+      context_, volume_accel_handles_.size(), volume_accel_handles_.data());
+
+  ray_gen_data->ray_hits = nullptr;
+  ray_gen_data->volume_accels = gprtBufferGetDevicePointer(volumeAccelBuffer_);
+  ray_gen_data->volume_accel_count =
+    static_cast<int>(volume_accel_handles_.size());
+}
+
+void GPRTRayTracer::bind_batch_ray_hits(XDGRayHit* ray_hits) const
+{
+  if (ray_hits == active_batch_ray_hits_) return;
+
+  auto* ray_gen_data = gprtRayGenGetParameters(batchRayGenProgram_);
+  ray_gen_data->ray_hits = ray_hits;
+
+  for (const auto& [surface, geometry] : surface_to_geometry_map_) {
+    (void)surface;
+    auto* geom_data = gprtGeomGetParameters(geometry);
+    geom_data->ray_hits = ray_hits;
+  }
+
+  active_batch_ray_hits_ = ray_hits;
+  gprtBuildShaderBindingTable(
+    context_,
+    static_cast<GPRTBuildSBTFlags>(GPRT_SBT_GEOM | GPRT_SBT_RAYGEN));
 }
 
 XDGRayHitBuffer GPRTRayTracer::allocate_ray_hits(std::size_t count) const
@@ -607,6 +696,9 @@ void GPRTRayTracer::free_ray_hits(XDGRayHitBuffer& buffer) const
   auto* allocation = static_cast<GPRTRayHitAllocation*>(buffer.native_handle);
   gprtBufferDestroy(allocation->device_buffer);
   gprtBufferDestroy(allocation->host_buffer);
+  if (buffer.data == active_batch_ray_hits_) {
+    active_batch_ray_hits_ = nullptr;
+  }
   delete allocation;
 
   buffer = {};
@@ -615,6 +707,31 @@ void GPRTRayTracer::free_ray_hits(XDGRayHitBuffer& buffer) const
 void GPRTRayTracer::ray_fire_batch(const XDGRayHitBuffer& buffer,
                                    HitOrientation orientation) const
 {
+  if (buffer.count == 0) return;
+
+  if (!buffer.data || !buffer.native_handle) {
+    fatal_error("Invalid GPRT XDG ray-hit buffer");
+  }
+
+  if (buffer.count > std::numeric_limits<std::uint32_t>::max()) {
+    fatal_error("GPRT batches cannot contain more than {} rays",
+                std::numeric_limits<std::uint32_t>::max());
+  }
+
+  if (!volumeAccelBuffer_) {
+    fatal_error("GPRT volume acceleration-structure table has not been uploaded");
+  }
+
+  bind_batch_ray_hits(buffer.data);
+
+  dblRayFirePushConstants push_constants {};
+  push_constants.hitOrientation = orientation;
+  push_constants.batch_mode = 1;
+
+  gprtRayGenLaunch1D(context_, batchRayGenProgram_,
+                     static_cast<std::uint32_t>(buffer.count),
+                     push_constants);
+  gprtGraphicsSynchronize(context_);
 
 }
 

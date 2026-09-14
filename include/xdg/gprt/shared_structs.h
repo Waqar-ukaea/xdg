@@ -1,4 +1,5 @@
 #include "gprt.h"
+#include "../device_ray.h"
 #include "../shared_enums.h"
 #include "../geometry/dp_math.h"
 
@@ -42,17 +43,25 @@ struct DPTriangleGeomData {
   int forward_vol;
   int reverse_vol;
   dblRay *ray; // double precision rays
+  xdg::XDGRayHit *ray_hits; // shared XDG batch ray/hit records
   xdg::HitOrientation hitOrientation;
   int forward_tree; // TreeID of the forward volume
   int reverse_tree; // TreeID of the reverse volume
   GPRTPrimitiveRef* primitive_refs;
   int num_faces; // Number of faces in the geometry
   double bounding_box_bump; // Bounding box expansion for this geometry
+  xdg::SurfaceBoundaryCondition boundary_condition;
 };
 
 struct dblRayGenData {
   dblRay *ray;
   dblHit *hit;
+};
+
+struct XDGRayHitRayGenData {
+  xdg::XDGRayHit *ray_hits;
+  SurfaceAccelerationStructure *volume_accels;
+  int volume_accel_count;
 };
 
 /* A small structure of constants that can change every frame without rebuilding the
@@ -61,4 +70,6 @@ struct dblRayGenData {
 struct dblRayFirePushConstants {
   double tMax;
   double tMin;
+  xdg::HitOrientation hitOrientation;
+  int batch_mode;
 };

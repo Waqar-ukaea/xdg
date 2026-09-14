@@ -156,6 +156,7 @@ class GPRTRayTracer : public RayTracer {
 
     // Shader programs
     std::map<RayGenType, GPRTRayGenOf<dblRayGenData>> rayGenPrograms_;
+    GPRTRayGenOf<XDGRayHitRayGenData> batchRayGenProgram_ {nullptr};
 
     GPRTMissOf<void> missProgram_; 
     GPRTComputeOf<DPTriangleGeomData> aabbPopulationProgram_; //<! AABB population program for double precision rays
@@ -163,6 +164,7 @@ class GPRTRayTracer : public RayTracer {
     // Buffers 
     gprtRayHit rayHitBuffers_;
     GPRTBufferOf<int32_t> excludePrimitivesBuffer_; //<! Buffer for excluded primitives
+    GPRTBufferOf<SurfaceAccelerationStructure> volumeAccelBuffer_ {nullptr};
     
     // Geometry Type and Instances
     std::vector<gprt::Instance> globalBlasInstances_; //<! List of every BLAS instance stored in this ray tracer
@@ -180,7 +182,13 @@ class GPRTRayTracer : public RayTracer {
     std::unordered_map<SurfaceTreeID, GPRTAccel> surface_volume_tree_to_accel_map; // Map from XDG::TreeID to GPRTAccel for volume TLAS
     std::unordered_map<SurfaceTreeID, GPRTBufferOf<gprt::Instance>> surface_tree_to_instance_buffer_map_; // Backing buffers for TLAS instances
     std::unordered_map<MeshID, SurfaceTreeID> volume_to_surface_tree_; // Mesh volume to its volume TLAS tree
+    std::vector<SurfaceAccelerationStructure> volume_accel_handles_;
     std::vector<GPRTAccel> blas_handles_; // Store BLAS handles so that they can be explicitly referenced in destructor
+
+    mutable XDGRayHit* active_batch_ray_hits_ {nullptr};
+
+    void update_volume_accel_buffer();
+    void bind_batch_ray_hits(XDGRayHit* ray_hits) const;
 
     // Global Tree IDs
     GPRTAccel global_surface_accel_ {nullptr};

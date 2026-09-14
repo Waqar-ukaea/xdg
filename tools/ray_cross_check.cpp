@@ -247,20 +247,14 @@ std::unique_ptr<BackendCase> make_backend_case(const std::string& filename, Mesh
   return std::make_unique<BackendCase>(library, RT_LIB_TO_STR.at(library), std::move(xdg));
 }
 
-void ensure_cubql_buffer(BackendCase& backend, std::size_t count)
+void ensure_device_buffer(BackendCase& backend, std::size_t count)
 {
-#ifdef XDG_ENABLE_CUBQL
   if (backend.device_buffer_capacity >= count)
     return;
   if (backend.device_buffer.data)
     backend.xdg->free_ray_hits(backend.device_buffer);
   backend.device_buffer = backend.xdg->allocate_ray_hits(count);
   backend.device_buffer_capacity = count;
-#else
-  (void)backend;
-  (void)count;
-  throw std::runtime_error("cuBQL support is not compiled in");
-#endif
 }
 
 void run_backend_batch(BackendCase& backend, const std::vector<XDGRayHit>& input,
@@ -291,47 +285,17 @@ void run_backend_batch(BackendCase& backend, const std::vector<XDGRayHit>& input
 #endif
   }
 
-  if (backend.library == RTLibrary::GPRT)
+  if (backend.library == RTLibrary::GPRT ||
+      backend.library == RTLibrary::CUBQL)
   {
-#ifdef XDG_ENABLE_GPRT
-    auto gprt = std::dynamic_pointer_cast<GPRTRayTracer>(backend.xdg->ray_tracing_interface());
-    if (!gprt)
-      throw std::runtime_error("Failed to access GPRT ray tracer");
-    gprt->ray_fire_host_batch(output, HitOrientation::EXITING);
-    return;
-#else
-    throw std::runtime_error("GPRT support is not compiled in");
-#endif
-  }
+    ensure_device_buffer(backend, output.size());
+    XDGRayHitBuffer active_buffer = backend.device_buffer;
+    active_buffer.count = output.size();
 
-  if (backend.library == RTLibrary::CUBQL)
-  {
-#if defined(XDG_ENABLE_CUBQL) && defined(_OPENMP)
-    ensure_cubql_buffer(backend, output.size());
-    const std::size_t bytes = output.size() * sizeof(XDGRayHit);
-    const int host_device = omp_get_initial_device();
-    const int gpu_device = backend.device_buffer.device_id;
-
-    int status = omp_target_memcpy(backend.device_buffer.data, output.data(), bytes, 0, 0,
-                                   gpu_device, host_device);
-    if (status != 0)
-    {
-      throw std::runtime_error("Failed to copy cross-check rays to cuBQL device");
-    }
-
-    const XDGRayHitBuffer active_buffer {backend.device_buffer.data, output.size(), gpu_device};
+    backend.xdg->upload_ray_hits(active_buffer, output.data(), output.size());
     backend.xdg->ray_fire_batch(active_buffer, HitOrientation::EXITING);
-
-    status = omp_target_memcpy(output.data(), backend.device_buffer.data, bytes, 0, 0, host_device,
-                               gpu_device);
-    if (status != 0)
-    {
-      throw std::runtime_error("Failed to copy cuBQL cross-check results to host");
-    }
+    backend.xdg->download_ray_hits(active_buffer, output.data(), output.size());
     return;
-#else
-    throw std::runtime_error("cuBQL cross-check execution requires OpenMP target support");
-#endif
   }
 
   throw std::runtime_error("Unsupported ray-tracing backend");
@@ -684,7 +648,7 @@ int main(int argc, char** argv)
       const std::uint64_t run_seed =
           repeat_same_rays
               ? base_seed
-              : base_seed + static_cast<std::uint64_t>(repetition) * 0x9e3779b97f4a7c15ULL;
+              : splitmix64(base_seed ^ static_cast<std::uint64_t>(repetition));
       auto run_stats = make_pair_stats(backends);
       std::uint64_t processed = 0;
       std::uint32_t last_percent = std::numeric_limits<std::uint32_t>::max();

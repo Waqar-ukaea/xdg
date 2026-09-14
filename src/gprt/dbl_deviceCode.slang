@@ -18,6 +18,9 @@ struct RayFirePayload {
     SurfaceAccelerationStructure tlas;
     int primitive_id; // ID of the primitive hit
     xdg::PointInVolume piv; // Point in volume check (0 for outside, 1 for inside) 
+    int next_volume;
+    xdg::SurfaceBoundaryCondition boundary_condition;
+    double3 normal;
 };
 
 
@@ -41,11 +44,23 @@ void ray_fire_hit(uniform DPTriangleGeomData record, inout RayFirePayload payloa
     ? xdg::PointInVolume::OUTSIDE
     : xdg::PointInVolume::INSIDE; 
 
-    int instanceID = InstanceID();
-
     payload.distance = attr.f64t;
     payload.surf_id = record.surf_id;
     payload.primitive_id = attr.global_prim_id;
+    payload.boundary_condition = record.boundary_condition;
+    payload.normal = record.normals[PrimitiveIndex()];
+
+    int input_volume;
+    if (PC.batch_mode != 0) {
+        input_volume = record.ray_hits[rayID].volume;
+    } else if (record.ray[rayID].volume_tree == record.reverse_tree) {
+        input_volume = record.reverse_vol;
+    } else {
+        input_volume = record.forward_vol;
+    }
+    payload.next_volume = input_volume == record.forward_vol
+        ? record.reverse_vol
+        : record.forward_vol;
 }
 
 [shader("miss")]
@@ -54,6 +69,9 @@ void ray_fire_miss(inout RayFirePayload payload) {
     payload.distance = -1.0f;
     payload.surf_id = -1;
     payload.primitive_id = -1;
+    payload.next_volume = -1;
+    payload.boundary_condition = xdg::SurfaceBoundaryCondition::UNSET;
+    payload.normal = double3(0.0, 0.0, 0.0);
 }
 
 // This ray generation program will kick off the ray tracing process,
@@ -75,6 +93,7 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     // Pass the ray's origin and direction to the payload
     payload.distance = -1.0f;
     payload.surf_id = -1;
+    payload.primitive_id = -1;
     payload.tlas = world;
 
     TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
@@ -83,6 +102,52 @@ void ray_fire(uniform dblRayGenData record, uniform DPTriangleGeomData mesh) {
     record.hit[rayID].distance = payload.distance;
     record.hit[rayID].surf_id = payload.surf_id;
     record.hit[rayID].primitive_id = payload.primitive_id;
+}
+
+[shader("raygeneration")]
+void ray_fire_batch(uniform XDGRayHitRayGenData record,
+                    uniform DPTriangleGeomData mesh) {
+    uint rayID = DispatchRaysIndex().x;
+    xdg::XDGRayHit ray_hit = record.ray_hits[rayID];
+
+    RayFirePayload payload;
+    payload.distance = ray_hit.t_max;
+    payload.surf_id = -1;
+    payload.primitive_id = -1;
+    payload.piv = xdg::PointInVolume::OUTSIDE;
+    payload.next_volume = -1;
+    payload.boundary_condition = xdg::SurfaceBoundaryCondition::UNSET;
+    payload.normal = double3(0.0, 0.0, 0.0);
+
+    const int volume = ray_hit.volume;
+    if (volume >= 0 && volume < record.volume_accel_count) {
+        SurfaceAccelerationStructure world = record.volume_accels[volume];
+
+        RayDesc rayDesc;
+        rayDesc.Origin = float3(float(ray_hit.origin[0]),
+                                float(ray_hit.origin[1]),
+                                float(ray_hit.origin[2]));
+        rayDesc.Direction = normalize(float3(float(ray_hit.direction[0]),
+                                             float(ray_hit.direction[1]),
+                                             float(ray_hit.direction[2])));
+        rayDesc.TMin = float(ray_hit.t_min);
+        rayDesc.TMax = float(ray_hit.t_max);
+
+        payload.tlas = world;
+        TraceRay(world, RAY_FLAG_NONE, 0xff, 0, 1, rayDesc, payload);
+    }
+
+    record.ray_hits[rayID].distance = payload.surf_id == -1
+        ? ray_hit.t_max
+        : payload.distance;
+    record.ray_hits[rayID].surface = payload.surf_id;
+    record.ray_hits[rayID].primitive = payload.primitive_id;
+    record.ray_hits[rayID].point_in_volume = int(payload.piv);
+    record.ray_hits[rayID].next_volume = payload.next_volume;
+    record.ray_hits[rayID].boundary_condition = int(payload.boundary_condition);
+    record.ray_hits[rayID].normal[0] = payload.normal.x;
+    record.ray_hits[rayID].normal[1] = payload.normal.y;
+    record.ray_hits[rayID].normal[2] = payload.normal.z;
 }
 
 [shader("raygeneration")]
@@ -113,10 +178,12 @@ void point_in_volume(uniform dblRayGenData record, uniform DPTriangleGeomData me
 // ------------------------------------------------- Compute Shaders -------------------------------------------------
 /* A shader to compute and store AABB min/maxes in single precision using double precision coords*/
 [shader("compute")]
-[numthreads(1, 1, 1)]
+[numthreads(256, 1, 1)]
 void
 populate_aabbs(uint3 DispatchThreadID: SV_DispatchThreadID, uniform DPTriangleGeomData record) {
     int primID = DispatchThreadID.x;
+    if (primID >= record.num_faces) return;
+
     int3 indices = record.index[primID];
     dp::vec3 A = record.vertex[indices[0]];
     dp::vec3 B = record.vertex[indices[1]];
@@ -153,11 +220,32 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     dp::vec3 v2 = record.vertex[indices[2]];
     dp::vec3 vertices[3] = { v0, v1, v2 };
 
-    // Load rays
-    dp::vec3 origin = record.ray[rayID].origin;
-    dp::vec3 direction = record.ray[rayID].direction;
-    double tMin = record.ray[rayID].tMin;
-    double tMax = record.ray[rayID].tMax;
+    // Load either the legacy internal ray or the shared XDG batch record.
+    dp::vec3 origin;
+    dp::vec3 direction;
+    double tMin;
+    double tMax;
+    xdg::HitOrientation hitOrientation;
+    int last_hit_primitive = -1;
+
+    if (PC.batch_mode != 0) {
+        origin = dp::vec3(record.ray_hits[rayID].origin[0],
+                          record.ray_hits[rayID].origin[1],
+                          record.ray_hits[rayID].origin[2]);
+        direction = dp::vec3(record.ray_hits[rayID].direction[0],
+                             record.ray_hits[rayID].direction[1],
+                             record.ray_hits[rayID].direction[2]);
+        tMin = record.ray_hits[rayID].t_min;
+        tMax = record.ray_hits[rayID].t_max;
+        hitOrientation = PC.hitOrientation;
+        last_hit_primitive = record.ray_hits[rayID].last_hit_primitive;
+    } else {
+        origin = record.ray[rayID].origin;
+        direction = record.ray[rayID].direction;
+        tMin = record.ray[rayID].tMin;
+        tMax = record.ray[rayID].tMax;
+        hitOrientation = record.ray[rayID].hitOrientation;
+    }
 
     bool useOrientation = false;
     int orientation = 0;
@@ -181,7 +269,10 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     dp::vec3 norm = record.normals[primID]; // recover double precision normal. TODO - Should we calculate from vertices instead?
 
     // sense adjustment of normal
-    if (record.ray[rayID].volume_tree == record.reverse_tree)
+    const bool reverse_sense = PC.batch_mode != 0
+        ? record.ray_hits[rayID].volume == record.reverse_vol
+        : record.ray[rayID].volume_tree == record.reverse_tree;
+    if (reverse_sense)
     {
         norm = -norm;
     }
@@ -190,17 +281,19 @@ void DPTrianglePluckerIntersection(uniform DPTriangleGeomData record)
     uint hit_kind = norm_dot_dir < 0 ? HIT_KIND_TRIANGLE_FRONT_FACE
                                      : HIT_KIND_TRIANGLE_BACK_FACE;
 
-    xdg::HitOrientation hitOrientation = record.ray[rayID].hitOrientation;
-
     if (orientation_cull(direction, norm, hitOrientation))
     {
         return;
     }
 
-    for (int i = 0; i < record.ray[rayID].exclude_count; ++i)
-    {
-        if (record.ray[rayID].exclude_primitives[i] == global_prim_id) {
-            return;
+    if (PC.batch_mode != 0) {
+        if (last_hit_primitive == global_prim_id) return;
+    } else {
+        for (int i = 0; i < record.ray[rayID].exclude_count; ++i)
+        {
+            if (record.ray[rayID].exclude_primitives[i] == global_prim_id) {
+                return;
+            }
         }
     }
     attr.global_prim_id = global_prim_id;  

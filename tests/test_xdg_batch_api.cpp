@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <omp.h>
 
@@ -131,12 +132,14 @@ TEST_CASE("XDG batch ray fire matches scalar queries on MeshMock",
   }
 }
 
-TEST_CASE("XDG batch ray fire multi-volume check full rayhit results", 
-          "[rayfire][batch][cubql]")
+TEST_CASE("XDG batch ray fire multi-volume check full rayhit results",
+          "[rayfire][batch]")
 {
-  check_ray_tracer_supported(RTLibrary::CUBQL);
+  const RTLibrary rt_library = GENERATE(RTLibrary::CUBQL, RTLibrary::GPRT);
+  CAPTURE(RT_LIB_TO_STR.at(rt_library));
+  check_ray_tracer_supported(rt_library);
 
-  auto xdg = XDG::create(MeshLibrary::MOAB, RTLibrary::CUBQL);
+  auto xdg = XDG::create(MeshLibrary::MOAB, rt_library);
   const auto& mesh_manager = xdg->mesh_manager();
   mesh_manager->load_file("pwr_pincell.h5m");
   mesh_manager->init();
@@ -190,24 +193,11 @@ TEST_CASE("XDG batch ray fire multi-volume check full rayhit results",
   }
 
   XDGRayHitBuffer ray_hits = xdg->allocate_ray_hits(host_ray_hits.size());
-  const std::size_t buffer_size = host_ray_hits.size() * sizeof(XDGRayHit);
-  REQUIRE(omp_target_memcpy(ray_hits.data,
-                            host_ray_hits.data(),
-                            buffer_size,
-                            0,
-                            0,
-                            ray_hits.device_id,
-                            omp_get_initial_device()) == 0);
+  xdg->upload_ray_hits(ray_hits, host_ray_hits.data(), host_ray_hits.size());
 
   xdg->ray_fire_batch(ray_hits);
 
-  REQUIRE(omp_target_memcpy(host_ray_hits.data(),
-                            ray_hits.data,
-                            buffer_size,
-                            0,
-                            0,
-                            omp_get_initial_device(),
-                            ray_hits.device_id) == 0);
+  xdg->download_ray_hits(ray_hits, host_ray_hits.data(), host_ray_hits.size());
 
   xdg->free_ray_hits(ray_hits);
   
@@ -261,4 +251,25 @@ TEST_CASE("XDG batch ray fire multi-volume check full rayhit results",
     REQUIRE_THAT(batch_ray_hit.normal[1], Catch::Matchers::WithinAbs(expected_normal.y, tolerance));
     REQUIRE_THAT(batch_ray_hit.normal[2], Catch::Matchers::WithinAbs(expected_normal.z, tolerance));
   }
+
+  // Verify the two per-ray controls used by transport: a finite collision
+  // distance and exclusion of the primitive hit by the preceding event.
+  const XDGRayHit reference_hit = host_ray_hits.front();
+  std::array<XDGRayHit, 2> controlled_rays {{reference_hit, reference_hit}};
+  controlled_rays[0].t_max = reference_hit.distance * 0.5;
+  controlled_rays[0].last_hit_primitive = ID_NONE;
+  controlled_rays[1].t_max = INFTY;
+  controlled_rays[1].last_hit_primitive = reference_hit.primitive;
+
+  XDGRayHitBuffer controlled_buffer = xdg->allocate_ray_hits(controlled_rays.size());
+  xdg->upload_ray_hits(controlled_buffer, controlled_rays.data(), controlled_rays.size());
+  xdg->ray_fire_batch(controlled_buffer);
+  xdg->download_ray_hits(controlled_buffer, controlled_rays.data(), controlled_rays.size());
+  xdg->free_ray_hits(controlled_buffer);
+
+  REQUIRE(controlled_rays[0].surface == ID_NONE);
+  REQUIRE_THAT(controlled_rays[0].distance,
+               Catch::Matchers::WithinAbs(reference_hit.distance * 0.5,
+                                           tolerance));
+  REQUIRE(controlled_rays[1].primitive != reference_hit.primitive);
 }
