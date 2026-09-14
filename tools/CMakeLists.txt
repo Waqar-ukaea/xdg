@@ -51,3 +51,7 @@ endif()
 if (XDG_ENABLE_GPRT AND TARGET ray-cross-check)
     target_link_libraries(ray-cross-check PRIVATE $<BUILD_INTERFACE:gprt>)
 endif()
+
+if (XDG_ENABLE_GPRT AND TARGET ray-benchmark)
+    target_link_libraries(ray-benchmark PRIVATE $<BUILD_INTERFACE:gprt>)
+endif()
