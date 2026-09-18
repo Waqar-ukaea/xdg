@@ -14,6 +14,29 @@
       }
     },
     {
+      "name": "gprt_gcc_headless",
+      "inherits": ["base"],
+      "displayName": "GPRT GCC headless Vulkan build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "XDG_ENABLE_MOAB": "ON",
+        "XDG_ENABLE_LIBMESH": "OFF",
+        "XDG_ENABLE_EMBREE": "ON",
+        "XDG_ENABLE_GPRT": "ON",
+        "XDG_ENABLE_CUBQL": "OFF",
+        "XDG_BUILD_TESTS": "ON",
+        "XDG_BUILD_TOOLS": "ON",
+        "GPRT_BUILD_SAMPLES": "OFF",
+        "GPRT_BUILD_TESTS": "OFF",
+        "GPRT_USE_INCLUDED_GLFW": "ON",
+        "USE_HEADLESS": "ON"
+      }
+    },
+    {
       "name": "llvm",
       "inherits": ["base"],
       "cacheVariables": {
@@ -56,6 +79,10 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "gprt_gcc_headless",
+      "configurePreset": "gprt_gcc_headless"
+    },
     {
       "name": "cubql_llvm_ada",
       "configurePreset": "cubql_llvm_ada"
