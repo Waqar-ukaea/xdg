@@ -80,7 +80,7 @@ private:
   std::vector<XDGBackendFixture> test_fixtures_;
 };
 
-TEST_CASE("Test Mesh Backend Cross-Check 1 Vol")
+TEST_CASE("Test Cross Check Transport across mesh Backends Jezebel")
 {
   // Attempt to build all three test fixtures, but skip the test if fewer than two are available
   const auto test_fixtures = make_mesh_lib_cases({
@@ -96,7 +96,7 @@ TEST_CASE("Test Mesh Backend Cross-Check 1 Vol")
   harness.check();
 }
 
-TEST_CASE("Test Mesh Backend Cross-Check 2 Vol")
+TEST_CASE("Test Cross Check Transport across mesh Backends cyl-brick")
 {
   // Attempt to build all three test fixtures, but skip the test if fewer than two are available
   const auto test_fixtures = make_mesh_lib_cases({
@@ -112,7 +112,7 @@ TEST_CASE("Test Mesh Backend Cross-Check 2 Vol")
   harness.check();
 }
 
-TEST_CASE("Test Mesh Backend Cross-Check Pincell -- Implicit libMesh Boundaries")
+TEST_CASE("Test Cross Check Transport across Backends Pincell -- Implicit libMesh Boundaries")
 {
   // Attempt to build all supported test fixtures, but skip the test if fewer than two are available
   const auto test_fixtures = make_mesh_lib_cases({
@@ -131,17 +131,18 @@ TEST_CASE("Test Mesh Backend Cross-Check Pincell -- Implicit libMesh Boundaries"
 
 TEST_CASE("Test Mesh Backend Cross-Check Tallies -- Simple Cubes, Tet Mesh")
 {
-  auto xdg_moab = XDG::create(MeshLibrary::MOAB);
-  xdg_moab->mesh_manager()->load_file("cube-w-multiblock-sideset.h5m");
-  xdg_moab->mesh_manager()->init();
-  xdg_moab->mesh_manager()->parse_metadata();
-  xdg_moab->prepare_raytracer();
+  // Attempt to build all supported test fixtures, but skip the test if fewer than two are available
+  const auto test_fixtures = make_mesh_lib_cases({
+    {MeshLibrary::MOAB, "cube-w-multiblock-sideset.h5m"}, // MOAB passed first so it becomes the reference case
+    {MeshLibrary::LIBMESH, "cube-w-multiblock-sideset.exo"}
+  });
+  if (test_fixtures.size() < 2) {
+    SKIP("Fewer than two mesh backends are available; skipping cross-check.");
+  }
 
-  auto xdg_libmesh = XDG::create(MeshLibrary::LIBMESH);
-  xdg_libmesh->mesh_manager()->load_file("cube-w-multiblock-sideset.exo");
-  xdg_libmesh->mesh_manager()->init();
-  xdg_libmesh->mesh_manager()->parse_metadata();
-  xdg_libmesh->prepare_raytracer();
+  const auto& xdg_moab = test_fixtures[0].xdg;
+  const auto& xdg_libmesh = test_fixtures[1].xdg;
+  CAPTURE(test_fixtures[0].label(), test_fixtures[1].label());
 
   // check that the global bounding box of the model and various model counts are the same
   REQUIRE(xdg_moab->mesh_manager()->num_vertices() == xdg_libmesh->mesh_manager()->num_vertices());
@@ -177,94 +178,6 @@ TEST_CASE("Test Mesh Backend Cross-Check Tallies -- Simple Cubes, Tet Mesh")
     for (size_t j = 0; j < moab_tracks.size(); j++) {
       REQUIRE(xdg_moab->mesh_manager()->element_index(moab_tracks[j].first) == xdg_libmesh->mesh_manager()->element_index(libmesh_tracks[j].first));
       REQUIRE_THAT(moab_tracks[j].second, Catch::Matchers::WithinAbs(libmesh_tracks[j].second, 1e-10));
-    }
-  }
-}
-
-TEST_CASE("Test Mesh Backend Cross-Check Tallies -- JEZEBEL")
-{
-  auto xdg_moab = XDG::create(MeshLibrary::MOAB);
-  xdg_moab->mesh_manager()->load_file("jezebel.h5m");
-  xdg_moab->mesh_manager()->init();
-  xdg_moab->mesh_manager()->parse_metadata();
-  xdg_moab->prepare_raytracer();
-
-  auto xdg_libmesh = XDG::create(MeshLibrary::LIBMESH);
-  xdg_libmesh->mesh_manager()->load_file("jezebel.exo");
-  xdg_libmesh->mesh_manager()->init();
-  xdg_libmesh->mesh_manager()->parse_metadata();
-  xdg_libmesh->prepare_raytracer();
-
-  auto xdg_mfem = XDG::create(MeshLibrary::MFEM);
-  xdg_mfem->mesh_manager()->load_file("jezebel.exo");
-  xdg_mfem->mesh_manager()->init();
-  xdg_mfem->mesh_manager()->parse_metadata();
-  xdg_mfem->prepare_raytracer();
-
-  // check that the global bounding box of the model and various model counts are the same
-  REQUIRE(xdg_moab->mesh_manager()->num_vertices() == xdg_libmesh->mesh_manager()->num_vertices());
-  REQUIRE(xdg_moab->mesh_manager()->num_vertices() == xdg_mfem->mesh_manager()->num_vertices());
-
-  REQUIRE(xdg_moab->mesh_manager()->num_volume_elements() == xdg_libmesh->mesh_manager()->num_volume_elements());
-  REQUIRE(xdg_moab->mesh_manager()->num_volume_elements() == xdg_mfem->mesh_manager()->num_volume_elements());
-
-  REQUIRE(xdg_moab->mesh_manager()->num_volumes() == xdg_libmesh->mesh_manager()->num_volumes());
-  REQUIRE(xdg_moab->mesh_manager()->num_volumes() == xdg_mfem->mesh_manager()->num_volumes());
-
-  auto moab_bounding_box = xdg_moab->mesh_manager()->global_bounding_box();
-  auto libmesh_bounding_box = xdg_libmesh->mesh_manager()->global_bounding_box();
-  auto mfem_bounding_box = xdg_mfem->mesh_manager()->global_bounding_box();
-
-  REQUIRE_THAT(moab_bounding_box.min_x, Catch::Matchers::WithinAbs(libmesh_bounding_box.min_x, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.min_y, Catch::Matchers::WithinAbs(libmesh_bounding_box.min_y, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.min_z, Catch::Matchers::WithinAbs(libmesh_bounding_box.min_z, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_x, Catch::Matchers::WithinAbs(libmesh_bounding_box.max_x, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_y, Catch::Matchers::WithinAbs(libmesh_bounding_box.max_y, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_z, Catch::Matchers::WithinAbs(libmesh_bounding_box.max_z, 1e-6));
-
-  REQUIRE_THAT(moab_bounding_box.min_x, Catch::Matchers::WithinAbs(mfem_bounding_box.min_x, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.min_y, Catch::Matchers::WithinAbs(mfem_bounding_box.min_y, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.min_z, Catch::Matchers::WithinAbs(mfem_bounding_box.min_z, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_x, Catch::Matchers::WithinAbs(mfem_bounding_box.max_x, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_y, Catch::Matchers::WithinAbs(mfem_bounding_box.max_y, 1e-6));
-  REQUIRE_THAT(moab_bounding_box.max_z, Catch::Matchers::WithinAbs(mfem_bounding_box.max_z, 1e-6));
-
-  // sample start and end locations within the bounding box of these models
-  int num_samples = 10000;
-  for (int i = 0; i < num_samples; i++) {
-    Position start = moab_bounding_box.sample_location();
-    Position end = moab_bounding_box.sample_location();
-
-    auto moab_element = xdg_moab->find_element(start);
-    auto libmesh_element = xdg_libmesh->find_element(start);
-    auto mfem_element = xdg_mfem->find_element(start);
-
-    if (libmesh_element == ID_NONE) {
-      // we want the others to be ID_NONE as well
-      REQUIRE(moab_element == ID_NONE);
-      REQUIRE(mfem_element == ID_NONE);
-      continue;
-    }
-
-    REQUIRE(libmesh_element != ID_NONE);
-    REQUIRE(moab_element != ID_NONE);
-    REQUIRE(mfem_element != ID_NONE);
-
-    // check element equivalence by index b/c IDs may be different depending on the library conventions
-    REQUIRE(xdg_moab->mesh_manager()->element_index(moab_element) == xdg_libmesh->mesh_manager()->element_index(libmesh_element));
-    REQUIRE(xdg_moab->mesh_manager()->element_index(moab_element) == xdg_mfem->mesh_manager()->element_index(mfem_element));
-
-    auto moab_tracks = xdg_moab->segments(start, end);
-    auto libmesh_tracks = xdg_libmesh->segments(start, end);
-    auto mfem_tracks = xdg_mfem->segments(start, end);
-
-    REQUIRE(moab_tracks.size() == libmesh_tracks.size());
-    for (size_t j = 0; j < moab_tracks.size(); j++) {
-      REQUIRE(xdg_moab->mesh_manager()->element_index(moab_tracks[j].first) == xdg_libmesh->mesh_manager()->element_index(libmesh_tracks[j].first));
-      REQUIRE(xdg_moab->mesh_manager()->element_index(moab_tracks[j].first) == xdg_mfem->mesh_manager()->element_index(mfem_tracks[j].first));
-
-      REQUIRE_THAT(moab_tracks[j].second, Catch::Matchers::WithinAbs(libmesh_tracks[j].second, 1e-10));
-      REQUIRE_THAT(moab_tracks[j].second, Catch::Matchers::WithinAbs(mfem_tracks[j].second, 1e-10));
     }
   }
 }
