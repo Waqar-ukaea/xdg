@@ -1,6 +1,8 @@
 // stl includes
 #include <iostream>
 #include <memory>
+#include <string>
+#include <vector>
 
 // testing includes
 #include <catch2/catch_test_macros.hpp>
@@ -12,8 +14,33 @@
 #include "xdg/xdg.h"
 
 #include "particle_sim.h"
+#include "util.h"
 
 using namespace xdg;
+using namespace xdg::test;
+
+struct MeshCaseInput {
+  MeshLibrary mesh_library;
+  std::string filename;
+};
+
+std::vector<XDGBackendFixture> make_mesh_lib_cases(
+  const std::vector<MeshCaseInput>& inputs,
+  RTLibrary rt_library = RTLibrary::EMBREE)
+{
+  std::vector<XDGBackendFixture> mesh_lib_cases;
+  for (const auto& input : inputs) {
+    if (input.mesh_library == MeshLibrary::MOCK ||
+        !mesh_library_available(input.mesh_library)) {
+      continue;
+    }
+
+    mesh_lib_cases.push_back(
+      make_xdg_backend_fixture(input.mesh_library, rt_library, input.filename));
+  }
+
+  return mesh_lib_cases;
+}
 
 class CrossCheck {
 
