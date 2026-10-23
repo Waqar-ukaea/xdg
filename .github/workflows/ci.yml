@@ -38,7 +38,9 @@ jobs:
         shell: bash
         run: |
           sudo apt -y update
-          sudo apt install -y libembree-dev \
+          sudo apt install -y libgcc-13-dev \
+                              libstdc++-13-dev \
+                              libembree-dev \
                               libnetcdf-dev \
                               libhdf5-dev \
                               libeigen3-dev \
@@ -84,7 +86,7 @@ jobs:
           cd ~
           git clone https://github.com/libMesh/libmesh.git
           cd libmesh
-          git checkout v1.8.0
+          git checkout v1.7.0
 
       - name: OpenMP Environment Variables
         run: |
@@ -138,7 +140,7 @@ jobs:
         run: |
           cd ~
           cd libmesh
-          git checkout v1.8.0
+          git checkout v1.7.0
           git submodule update --init --recursive
           mkdir build
           cd build
