@@ -12,6 +12,11 @@ jobs:
     name: |
       libMesh=${{ matrix.libmesh }};MOAB=${{ matrix.moab }}
     runs-on: ubuntu-26.04
+
+    env:
+      CC: gcc-13
+      CXX: g++-13
+      
     strategy:
       fail-fast: false
       matrix:
