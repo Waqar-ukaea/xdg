@@ -13,10 +13,6 @@ jobs:
       libMesh=${{ matrix.libmesh }};MOAB=${{ matrix.moab }}
     runs-on: ubuntu-26.04
 
-    env:
-      CC: gcc-13
-      CXX: g++-13
-      
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +145,7 @@ jobs:
           git submodule update --init --recursive
           mkdir build
           cd build
-          ../configure --prefix=$HOME/LIBMESH --enable-exodus --disable-netcdf4 --disable-eigen --disable-lapack --disable-mpi --disable-metaphysicl
+          ../configure --prefix=$HOME/LIBMESH --enable-exodus --disable-netcdf --disable-eigen --disable-lapack --disable-mpi --disable-metaphysicl
           make -j4
           sudo make install
 
