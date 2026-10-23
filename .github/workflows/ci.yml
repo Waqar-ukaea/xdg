@@ -27,6 +27,13 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Determine runner image
+        id: runner_image
+        shell: bash
+        run: |
+          source /etc/os-release
+          echo "RUNNER_DISTRO=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
       - name: Apt dependencies
         shell: bash
         run: |
@@ -103,7 +110,7 @@ jobs:
           cache-name: moab-cache
         with:
           path: ~/MOAB
-          key: moab-${{ runner.os }}-${{ env.cache-name }}-${{ env.MOAB_SHA }}
+          key: moab-${{ runner.os }}-${{ env.cache-name }}-${{ env.RUNNER_DISTRO }}-${{ env.MOAB_SHA }}
 
       - name: libMesh Cache
         if: ${{ matrix.libmesh }}
@@ -113,7 +120,7 @@ jobs:
           cache-name: libmesh-cache
         with:
           path: ~/LIBMESH
-          key: libmesh-${{ runner.os }}-${{ env.cache-name }}-${{ env.LIBMESH_SHA }}
+          key: libmesh-${{ runner.os }}-${{ env.cache-name }}-${{ env.RUNNER_DISTRO }}-${{ env.LIBMESH_SHA }}
 
       - if: ${{ matrix.moab && steps.moab-cache.outputs.cache-hit != 'true' }}
         name: Build MOAB
