@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -105,7 +105,7 @@ jobs:
       - name: MOAB Cache
         if: ${{ matrix.moab }}
         id: moab-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         env:
           cache-name: moab-cache
         with:
@@ -115,7 +115,7 @@ jobs:
       - name: libMesh Cache
         if: ${{ matrix.libmesh }}
         id: libmesh-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         env:
           cache-name: libmesh-cache
         with:
