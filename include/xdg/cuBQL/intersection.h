@@ -71,6 +71,12 @@ intersect_surface_tree_batch(const xdg::cubql::Context& context,
                              std::size_t num_rays,
                              HitOrientation hit_orientation);
 
+void
+intersect_surface_tree_batch_global(const xdg::cubql::Context& context,
+                                    CuBQLVolumeGroup::DD global_volume_group,
+                                    XDGRayHit* d_ray_hits,
+                                    std::size_t num_rays);
+
 } // namespace xdg
 
 #endif // include guard

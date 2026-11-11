@@ -237,4 +237,56 @@ intersect_surface_tree_batch(const xdg::cubql::Context& context,
   }
 }
 
+void
+intersect_surface_tree_batch_global(const xdg::cubql::Context& context,
+                                    CuBQLVolumeGroup::DD global_volume_group,
+                                    XDGRayHit* d_ray_hits,
+                                    std::size_t num_rays)
+{
+  if (num_rays == 0) return;
+
+  if (!d_ray_hits) {
+    fatal_error("Invalid rays provided");
+  }
+
+  const int gpu_id = context.gpuID;
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(d_ray_hits)
+  for (std::size_t ray_id = 0; ray_id < num_rays; ++ray_id) {
+    const XDGRayHit ray_hit = d_ray_hits[ray_id];
+
+    CuBQLSurfaceHit hit;
+    hit.distance = ray_hit.t_max;
+    hit.surface = ID_NONE;
+    hit.primitive = ID_NONE;
+    hit.piv = OUTSIDE;
+    hit.next_volume = ID_NONE;
+
+    CuBQLRay ray;
+    ray.origin = cuBQL::vec3d(ray_hit.origin[0], ray_hit.origin[1], ray_hit.origin[2]);
+    ray.direction = cuBQL::vec3d(ray_hit.direction[0], ray_hit.direction[1], ray_hit.direction[2]);
+    ray.tMin = ray_hit.t_min;
+    ray.tMax = ray_hit.t_max;
+
+    intersect_surface_tree(global_volume_group,
+                            ray,
+                            &hit,
+                            static_cast<int>(HitOrientation::ANY),
+                            ray_hit.last_hit_primitive,
+                            nullptr,
+                            0);
+
+    d_ray_hits[ray_id].distance = hit.distance;
+    d_ray_hits[ray_id].surface = hit.surface;
+    d_ray_hits[ray_id].primitive = hit.primitive;
+    d_ray_hits[ray_id].point_in_volume = static_cast<std::int32_t>(hit.piv);
+    d_ray_hits[ray_id].next_volume = hit.next_volume;
+    d_ray_hits[ray_id].boundary_condition = static_cast<std::int32_t>(hit.boundary_condition);
+    d_ray_hits[ray_id].normal[0] = hit.normal.x;
+    d_ray_hits[ray_id].normal[1] = hit.normal.y;
+    d_ray_hits[ray_id].normal[2] = hit.normal.z;
+  }
+}
+
 } // namespace xdg

@@ -61,6 +61,8 @@ public:
   void ray_fire_batch(const XDGRayHitBuffer& ray_hits,
                       HitOrientation hit_orientation = HitOrientation::EXITING) const override;
 
+  void ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const;
+
   XDGRayHitBuffer allocate_ray_hits(std::size_t count) const override;
 
   void upload_ray_hits(const XDGRayHitBuffer& buffer,

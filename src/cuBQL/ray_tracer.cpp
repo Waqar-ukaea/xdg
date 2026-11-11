@@ -625,6 +625,27 @@ CuBQLRayTracer::ray_fire_batch(const XDGRayHitBuffer& ray_hits,
                                hit_orientation);
 }
 
+void
+CuBQLRayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const
+{
+  if (ray_hits.count == 0) return;
+
+  if (!ray_hits.data) {
+    fatal_error("Invalid cuBQL XDG ray-hit buffer");
+  }
+
+  if (!global_surface_bvh_.bvh.nodes ||
+      !global_surface_bvh_.d_surfaces ||
+      !global_surface_bvh_.d_prim_refs) {
+    fatal_error("Global cuBQL surface BVH has not been created");
+  }
+  
+  intersect_surface_tree_batch_global(context_,
+                                      global_surface_bvh_.get_device_data(),
+                                      ray_hits.data,
+                                      ray_hits.count);
+}
+
 std::pair<double, MeshID>
 CuBQLRayTracer::closest(TreeID, const Position&)
 {
