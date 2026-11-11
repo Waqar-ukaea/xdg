@@ -35,6 +35,8 @@ CuBQLRayTracer::~CuBQLRayTracer()
     d_volume_to_group_ = nullptr;
   }
 
+  global_surface_bvh_.release();
+
   for (auto& [tree, group] : tree_to_volume_group_) {
     group.release();
   }
@@ -328,7 +330,125 @@ CuBQLRayTracer::create_element_tree(const std::shared_ptr<MeshManager>&,
 
 void CuBQLRayTracer::create_global_surface_tree()
 {
-  warning("Global surface trees not currently supported with cuBQL ray tracer");
+  // release method is safe even if the BVH is empty, so we can call it unconditionally
+  global_surface_bvh_.release();
+
+  // First pass at this, we will be very manual and explicit. 
+  // Loop over registered surfaces and reconstruct AABBs for each of them, then build a BVH over all of them.
+
+  std::size_t global_num_primitives = 0;
+  for (const auto& [surface_id, surface_mesh] : surface_to_mesh_) {
+    global_num_primitives += surface_mesh.num_primitives;
+  }
+  std::vector<CuBQLVolumeGroup::SurfaceDD> h_global_surfaces;
+  std::vector<CuBQLVolumeGroup::PrimRef> h_global_prim_refs;
+  h_global_surfaces.reserve(surface_to_mesh_.size());
+  h_global_prim_refs.reserve(global_num_primitives);
+
+  for (const auto& [surface_id, surface_mesh] : surface_to_mesh_) {
+    CuBQLVolumeGroup::SurfaceDD surface_data;
+    surface_data.mesh = surface_mesh.get_device_data();
+    surface_data.next_volume = ID_NONE; // Global tree does not have volume information
+    surface_data.boundary_condition = UNSET; // Global tree does not have boundary condition information
+
+    const auto surface_index = static_cast<std::uint32_t>(h_global_surfaces.size());
+    h_global_surfaces.push_back(surface_data);
+
+    for (std::uint32_t prim_index = 0; prim_index < surface_mesh.num_primitives; ++prim_index) {
+      h_global_prim_refs.push_back({surface_index, prim_index});
+    }
+  }
+
+  auto* d_aabbs = static_cast<cuBQL::box3f*>
+    (omp_target_alloc(h_global_prim_refs.size() * sizeof(cuBQL::box3f), context_.gpuID));
+  auto* d_surfaces = static_cast<CuBQLVolumeGroup::SurfaceDD*>
+    (omp_target_alloc(h_global_surfaces.size() * sizeof(CuBQLVolumeGroup::SurfaceDD), context_.gpuID));
+  omp_target_memcpy(d_surfaces,
+                    h_global_surfaces.data(),
+                    h_global_surfaces.size() * sizeof(CuBQLVolumeGroup::SurfaceDD),
+                    0,
+                    0,
+                    context_.gpuID,
+                    context_.hostID);
+
+  auto* d_prim_refs = static_cast<CuBQLVolumeGroup::PrimRef*>
+    (omp_target_alloc(h_global_prim_refs.size() * sizeof(CuBQLVolumeGroup::PrimRef), context_.gpuID));
+  omp_target_memcpy(d_prim_refs,
+                    h_global_prim_refs.data(),
+                    h_global_prim_refs.size() * sizeof(CuBQLVolumeGroup::PrimRef),
+                    0,
+                    0,
+                    context_.gpuID,
+                    context_.hostID);
+
+  const auto num_primitives = static_cast<std::uint32_t>(h_global_prim_refs.size());
+  const int gpu_id = context_.gpuID;
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(d_aabbs, d_surfaces, d_prim_refs)
+  for (std::uint32_t prim_id = 0; prim_id < num_primitives; ++prim_id) {
+    const auto primitive = d_prim_refs[prim_id];
+    const auto surface = d_surfaces[primitive.surface_index];
+    const auto mesh = surface.mesh;
+    const auto indices = mesh.indices[primitive.primitive_index];
+
+    cuBQL::box3d aabb;
+    aabb.extend(mesh.vertices[indices.x]);
+    aabb.extend(mesh.vertices[indices.y]);
+    aabb.extend(mesh.vertices[indices.z]);
+
+    const cuBQL::vec3d bump(mesh.max_parent_volume_bump);
+    aabb.lower = aabb.lower - bump;
+    aabb.upper = aabb.upper + bump;
+    d_aabbs[prim_id] = cuBQL::box3f(aabb);
+  }
+
+  global_surface_bvh_.d_surfaces = d_surfaces;
+  global_surface_bvh_.d_prim_refs = d_prim_refs;
+  global_surface_bvh_.num_surfaces = h_global_surfaces.size();
+  global_surface_bvh_.num_primitives = num_primitives;
+  global_surface_bvh_.gpu_id = context_.gpuID;
+
+  cuBQL::BuildConfig build_params;
+  std::vector<cuBQL::box3f> host_aabbs(num_primitives);
+  omp_target_memcpy(
+    host_aabbs.data(),
+    d_aabbs,
+    host_aabbs.size() * sizeof(cuBQL::box3f),
+    0,
+    0,
+    context_.hostID,
+    context_.gpuID);
+
+  // Build with the selected GPU backend and return the BVH in host storage.
+  auto host_bvh = xdg::cubql::build_bvh(host_aabbs, build_params, context_.gpuID);
+
+  // Upload the BVH to openmp device
+  global_surface_bvh_.bvh.nodes = static_cast<cuBQL::bvh3f::node_t*>(
+    omp_target_alloc(host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t), context_.gpuID));
+  global_surface_bvh_.bvh.primIDs = static_cast<std::uint32_t*>(
+    omp_target_alloc(host_bvh.prim_ids.size() * sizeof(std::uint32_t), context_.gpuID));
+
+  omp_target_memcpy(
+    global_surface_bvh_.bvh.nodes,
+    host_bvh.nodes.data(),
+    host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t),
+    0,
+    0,
+    context_.gpuID,
+    context_.hostID);
+  omp_target_memcpy(
+    global_surface_bvh_.bvh.primIDs,
+    host_bvh.prim_ids.data(),
+    host_bvh.prim_ids.size() * sizeof(std::uint32_t),
+    0,
+    0,
+    context_.gpuID,
+    context_.hostID);
+
+  global_surface_bvh_.bvh.numNodes = host_bvh.nodes.size();
+  global_surface_bvh_.bvh.numPrims = host_bvh.prim_ids.size();
+
+  omp_target_free(d_aabbs, context_.gpuID);
 }
 
 void CuBQLRayTracer::create_global_element_tree()

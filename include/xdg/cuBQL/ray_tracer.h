@@ -95,6 +95,8 @@ private:
 
   std::vector<CuBQLVolumeGroup::DD> volume_to_group_;
   CuBQLVolumeGroup::DD* d_volume_to_group_ {nullptr};
+
+  CuBQLVolumeGroup global_surface_bvh_;  
 };
 
 } // namespace xdg
