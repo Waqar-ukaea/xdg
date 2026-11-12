@@ -102,6 +102,8 @@ public:
   virtual void ray_fire_batch(const XDGRayHitBuffer& ray_hits,
                               HitOrientation hit_orientation = HitOrientation::EXITING) const;
 
+  virtual void ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const;
+
   /**
    * @brief Finds the element containing a given point using the global element tree.
    *

@@ -9,12 +9,20 @@
 
 namespace xdg {
 
+enum class SurfaceTreeType {
+  PER_VOLUME,
+  GLOBAL
+};
+
+// Templated intersect_surfacet_tree method to handle per volume and global surface tree traversal
 #pragma omp declare target
+
 static inline float reject_candidate(const cuBQL::ray3f& traversal_ray)
 {
   return traversal_ray.tMax;
 }
-// Core traversal and intersection routine for a single ray against a flattened volume group/tree
+
+template<SurfaceTreeType Mode>
 static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
                                           CuBQLRay intersection_ray,
                                           CuBQLSurfaceHit* hit,
@@ -37,6 +45,28 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
   {
     const auto ref = volume_group.prim_refs[bvh_primitive_index];
     const auto surface = volume_group.surfaces[ref.surface_index];
+
+    bool reverse_sense;
+    MeshID next_volume;
+
+    // If using global surface BVH we need to derive the sense of the surface relative to the ray's current volume
+    // and the next volume to traverse to if the surface is hit. If using per volume BVH, this information is already stored in the surface data.
+    if constexpr (Mode == SurfaceTreeType::GLOBAL) {
+      if (intersection_ray.volume == surface.forward_volume) {
+        reverse_sense = false;
+        next_volume = surface.reverse_volume;
+      } else if (intersection_ray.volume == surface.reverse_volume) {
+        reverse_sense = true;
+        next_volume = surface.forward_volume;
+      } else {
+        // This surface does not bound the ray's current volume.
+        return reject_candidate(traversal_ray);
+      }
+    } else {
+      reverse_sense = surface.reverse_sense;
+      next_volume = surface.next_volume;
+    }
+
     const auto mesh = surface.mesh;
     const auto local_index = ref.primitive_index;
     const MeshID primitive_id = mesh.primitive_ids[local_index];
@@ -67,7 +97,7 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
 
     double normal_dot_direction = dot(normal, intersection_ray.direction);
 
-    if (surface.reverse_sense) {
+    if (reverse_sense) {
       normal_dot_direction = -normal_dot_direction;
     }
 
@@ -89,7 +119,7 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
       hit->surface = mesh.surface_id;
       hit->primitive = primitive_id;
       hit->piv = normal_dot_direction > 0.0 ? INSIDE : OUTSIDE;
-      hit->next_volume = surface.next_volume;
+      hit->next_volume = next_volume;
       hit->boundary_condition = surface.boundary_condition;
       hit->normal = normal;
       traversal_ray.tMax = static_cast<float>(intersection.t);
@@ -107,6 +137,7 @@ static inline void intersect_surface_tree(CuBQLVolumeGroup::DD volume_group,
     hit->normal = cuBQL::normalize(hit->normal);
   }
 }
+
 #pragma omp end declare target
 
 void
@@ -153,13 +184,13 @@ intersect_surface_tree_scalar(const xdg::cubql::Context& context,
   #pragma omp target device(gpu_id) \
     is_device_ptr(d_exclude_primitives, d_surface_hit)
   {
-    intersect_surface_tree(volume_group_dd,
-                           ray,
-                           d_surface_hit,
-                           orientation,
-                           ID_NONE,
-                           d_exclude_primitives,
-                           exclude_count);
+    intersect_surface_tree<SurfaceTreeType::PER_VOLUME>(volume_group_dd,
+                                                        ray,
+                                                        d_surface_hit,
+                                                        orientation,
+                                                        ID_NONE,
+                                                        d_exclude_primitives,
+                                                        exclude_count);
   }
 
   omp_target_memcpy(&surface_hit,
@@ -216,13 +247,13 @@ intersect_surface_tree_batch(const xdg::cubql::Context& context,
 
       const CuBQLVolumeGroup::DD volume_group = d_volume_to_group[ray.volume];
 
-      intersect_surface_tree(volume_group,
-                             ray,
-                             &hit,
-                             static_cast<int>(hit_orientation),
-                             ray_hit.last_hit_primitive,
-                             nullptr,
-                             0);
+      intersect_surface_tree<SurfaceTreeType::PER_VOLUME>(volume_group,
+                                                          ray,
+                                                          &hit,
+                                                          static_cast<int>(hit_orientation),
+                                                          ray_hit.last_hit_primitive,
+                                                          nullptr,
+                                                          0);
     }
 
     d_ray_hits[ray_id].distance = hit.distance;
@@ -264,18 +295,19 @@ intersect_surface_tree_batch_global(const xdg::cubql::Context& context,
     hit.next_volume = ID_NONE;
 
     CuBQLRay ray;
+    ray.volume = ray_hit.volume;
     ray.origin = cuBQL::vec3d(ray_hit.origin[0], ray_hit.origin[1], ray_hit.origin[2]);
     ray.direction = cuBQL::vec3d(ray_hit.direction[0], ray_hit.direction[1], ray_hit.direction[2]);
     ray.tMin = ray_hit.t_min;
     ray.tMax = ray_hit.t_max;
 
-    intersect_surface_tree(global_volume_group,
-                            ray,
-                            &hit,
-                            static_cast<int>(HitOrientation::ANY),
-                            ray_hit.last_hit_primitive,
-                            nullptr,
-                            0);
+    intersect_surface_tree<SurfaceTreeType::GLOBAL>(global_volume_group,
+                                                    ray,
+                                                    &hit,
+                                                    static_cast<int>(HitOrientation::EXITING),
+                                                    ray_hit.last_hit_primitive,
+                                                    nullptr,
+                                                    0);
 
     d_ray_hits[ray_id].distance = hit.distance;
     d_ray_hits[ray_id].surface = hit.surface;

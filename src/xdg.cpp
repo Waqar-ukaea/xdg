@@ -290,6 +290,11 @@ void XDG::ray_fire_batch(const XDGRayHitBuffer& ray_hits,
   ray_tracing_interface()->ray_fire_batch(ray_hits, hit_orientation);
 }
 
+void XDG::trace_against_global_surface_tree(const XDGRayHitBuffer& ray_hits) const
+{
+  ray_tracing_interface()->ray_fire_batch_global_tree(ray_hits);
+}
+
 std::pair<double, MeshID> XDG::closest(MeshID volume,
                                        const Position& origin) const
 {

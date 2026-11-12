@@ -39,6 +39,11 @@ void RayTracer::ray_fire_batch(const XDGRayHitBuffer&,
   fatal_error("Selected ray tracer does not support device batch ray fire");
 }
 
+void RayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer&) const
+{
+  fatal_error("Selected ray tracer does not support device batch ray fire");
+}
+
 SurfaceTreeID RayTracer::next_surface_tree_id()
 {
   return ++next_surface_tree_id_;
