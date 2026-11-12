@@ -60,6 +60,7 @@ struct CuBQLSurfaceMesh {
   void release();
 };
 
+// TODO - Modify this comment to mention that this group also works for the global BVH
 /**
   Owns the flattened cuBQL BVH for one topological volume. The BVH is built over
   all primitives belonging to the volume's surfaces, while PrimRef maps each
@@ -70,6 +71,11 @@ struct CuBQLVolumeGroup {
   struct SurfaceDD {
     CuBQLSurfaceMesh::DD mesh;
 
+    // Useful for global volume tree
+    MeshID forward_volume {ID_NONE};
+    MeshID reverse_volume {ID_NONE};
+
+    // Useful for per topological volume
     bool reverse_sense {false};
     MeshID next_volume {ID_NONE};
     SurfaceBoundaryCondition boundary_condition {UNSET};

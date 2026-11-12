@@ -61,7 +61,7 @@ public:
   void ray_fire_batch(const XDGRayHitBuffer& ray_hits,
                       HitOrientation hit_orientation = HitOrientation::EXITING) const override;
 
-  void ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const;
+  void ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const override;
 
   XDGRayHitBuffer allocate_ray_hits(std::size_t count) const override;
 
@@ -94,6 +94,8 @@ private:
 
   std::unordered_map<TreeID, CuBQLVolumeGroup> tree_to_volume_group_;
   std::unordered_map<MeshID, CuBQLSurfaceMesh> surface_to_mesh_;
+  std::unordered_map<MeshID, CuBQLVolumeGroup::SurfaceDD> global_surface_data_;
+
 
   std::vector<CuBQLVolumeGroup::DD> volume_to_group_;
   CuBQLVolumeGroup::DD* d_volume_to_group_ {nullptr};

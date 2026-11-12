@@ -185,6 +185,8 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
 
     CuBQLVolumeGroup::SurfaceDD surface_data;
     surface_data.mesh = surface_mesh.get_device_data();
+    surface_data.forward_volume = forward_parent;
+    surface_data.reverse_volume = reverse_parent;
 
     if (volume_id == forward_parent) {
       surface_data.next_volume = reverse_parent;
@@ -212,6 +214,11 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     for (std::uint32_t prim_index = 0; prim_index < surface_mesh.num_primitives; ++prim_index) {
       h_prim_refs.push_back({surface_index, prim_index});
     }
+
+    // Cache the latest non-owning surface view for global BVH construction.
+    // Assignment is intentional: when the second parent volume is registered,
+    // the cached mesh view must pick up the final maximum-parent box bump.
+    global_surface_data_[surface] = surface_data;
   }
 
   auto* d_aabbs = static_cast<cuBQL::box3f*>
@@ -316,7 +323,7 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
     volume_to_group_.resize(volume_index + 1);
   }
   volume_to_group_[volume_index] = it->second.get_device_data();
-  
+
   return tree;
 }
 
@@ -333,27 +340,25 @@ void CuBQLRayTracer::create_global_surface_tree()
   // release method is safe even if the BVH is empty, so we can call it unconditionally
   global_surface_bvh_.release();
 
-  // First pass at this, we will be very manual and explicit. 
-  // Loop over registered surfaces and reconstruct AABBs for each of them, then build a BVH over all of them.
+  if (global_surface_data_.empty()) {
+    fatal_error("No surfaces have been registered; cannot build global cuBQL surface tree");
+  }
 
   std::size_t global_num_primitives = 0;
-  for (const auto& [surface_id, surface_mesh] : surface_to_mesh_) {
-    global_num_primitives += surface_mesh.num_primitives;
+  for (const auto& [surface_id, surface_data] : global_surface_data_) {
+    global_num_primitives += surface_to_mesh_.at(surface_id).num_primitives;
   }
+
   std::vector<CuBQLVolumeGroup::SurfaceDD> h_global_surfaces;
   std::vector<CuBQLVolumeGroup::PrimRef> h_global_prim_refs;
-  h_global_surfaces.reserve(surface_to_mesh_.size());
+  h_global_surfaces.reserve(global_surface_data_.size());
   h_global_prim_refs.reserve(global_num_primitives);
 
-  for (const auto& [surface_id, surface_mesh] : surface_to_mesh_) {
-    CuBQLVolumeGroup::SurfaceDD surface_data;
-    surface_data.mesh = surface_mesh.get_device_data();
-    surface_data.next_volume = ID_NONE; // Global tree does not have volume information
-    surface_data.boundary_condition = UNSET; // Global tree does not have boundary condition information
-
+  for (const auto& [surface_id, surface_data] : global_surface_data_) {
     const auto surface_index = static_cast<std::uint32_t>(h_global_surfaces.size());
     h_global_surfaces.push_back(surface_data);
 
+    const auto& surface_mesh = surface_to_mesh_.at(surface_id);
     for (std::uint32_t prim_index = 0; prim_index < surface_mesh.num_primitives; ++prim_index) {
       h_global_prim_refs.push_back({surface_index, prim_index});
     }
@@ -404,7 +409,8 @@ void CuBQLRayTracer::create_global_surface_tree()
 
   global_surface_bvh_.d_surfaces = d_surfaces;
   global_surface_bvh_.d_prim_refs = d_prim_refs;
-  global_surface_bvh_.num_surfaces = h_global_surfaces.size();
+  global_surface_bvh_.num_surfaces =
+    static_cast<std::uint32_t>(h_global_surfaces.size());
   global_surface_bvh_.num_primitives = num_primitives;
   global_surface_bvh_.gpu_id = context_.gpuID;
 
@@ -449,6 +455,10 @@ void CuBQLRayTracer::create_global_surface_tree()
   global_surface_bvh_.bvh.numPrims = host_bvh.prim_ids.size();
 
   omp_target_free(d_aabbs, context_.gpuID);
+
+  SurfaceTreeID tree = next_surface_tree_id();
+  surface_trees_.push_back(tree);
+  global_surface_tree_ = tree;
 }
 
 void CuBQLRayTracer::create_global_element_tree()
