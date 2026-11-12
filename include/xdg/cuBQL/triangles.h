@@ -92,10 +92,10 @@ struct CuBQLVolumeGroup {
   struct DD {
     const SurfaceDD* surfaces {nullptr};
     const PrimRef* prim_refs {nullptr};
-    cuBQL::bvh3f bvh;
+    xdg::cubql::ActiveBVHType bvh;
   };
 
-  cuBQL::bvh3f bvh;
+  xdg::cubql::ActiveBVHType bvh;
   SurfaceDD* d_surfaces {nullptr};
   PrimRef* d_prim_refs {nullptr};
 

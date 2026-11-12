@@ -20,7 +20,7 @@ HostBVH build_bvh(const std::vector<cuBQL::box3f>& boxes,
              boxes.size() * sizeof(cuBQL::box3f),
              cudaMemcpyHostToDevice);
 
-  cuBQL::bvh3f cuda_bvh;
+  ActiveBVHType cuda_bvh;
   cuBQL::DeviceMemoryResource memory_resource;
   cuBQL::gpuBuilder(cuda_bvh,
                     device_boxes,
@@ -35,7 +35,7 @@ HostBVH build_bvh(const std::vector<cuBQL::box3f>& boxes,
   host_bvh.prim_ids.resize(cuda_bvh.numPrims);
   cudaMemcpy(host_bvh.nodes.data(),
              cuda_bvh.nodes,
-             host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t),
+             host_bvh.nodes.size() * sizeof(ActiveBVHType::node_t),
              cudaMemcpyDeviceToHost);
   cudaMemcpy(host_bvh.prim_ids.data(),
              cuda_bvh.primIDs,

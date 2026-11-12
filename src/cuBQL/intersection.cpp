@@ -272,7 +272,8 @@ void
 intersect_surface_tree_batch_global(const xdg::cubql::Context& context,
                                     CuBQLVolumeGroup::DD global_volume_group,
                                     XDGRayHit* d_ray_hits,
-                                    std::size_t num_rays)
+                                    std::size_t num_rays,
+                                    HitOrientation hit_orientation)
 {
   if (num_rays == 0) return;
 
@@ -304,7 +305,7 @@ intersect_surface_tree_batch_global(const xdg::cubql::Context& context,
     intersect_surface_tree<SurfaceTreeType::GLOBAL>(global_volume_group,
                                                     ray,
                                                     &hit,
-                                                    static_cast<int>(HitOrientation::EXITING),
+                                                    static_cast<int>(hit_orientation),
                                                     ray_hit.last_hit_primitive,
                                                     nullptr,
                                                     0);

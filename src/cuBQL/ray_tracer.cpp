@@ -272,7 +272,8 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   volume_group.gpu_id = context_.gpuID;
 
   cuBQL::BuildConfig build_params;
-  std::vector<cuBQL::box3f> host_aabbs(num_primitives);
+  build_params.maxAllowedLeafSize = 1;
+    std::vector<cuBQL::box3f> host_aabbs(num_primitives);
   omp_target_memcpy(
     host_aabbs.data(),
     d_aabbs,
@@ -286,15 +287,15 @@ CuBQLRayTracer::create_surface_tree(const std::shared_ptr<MeshManager>& mesh_man
   auto host_bvh = xdg::cubql::build_bvh(host_aabbs, build_params, context_.gpuID);
   
   // Upload the BVH to openmp device
-  volume_group.bvh.nodes = static_cast<cuBQL::bvh3f::node_t*>(
-    omp_target_alloc(host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t), context_.gpuID));
+  volume_group.bvh.nodes = static_cast<cubql::ActiveBVHType::node_t*>(
+    omp_target_alloc(host_bvh.nodes.size() * sizeof(cubql::ActiveBVHType::node_t), context_.gpuID));
   volume_group.bvh.primIDs = static_cast<std::uint32_t*>(
     omp_target_alloc(host_bvh.prim_ids.size() * sizeof(std::uint32_t), context_.gpuID));
 
   omp_target_memcpy(
     volume_group.bvh.nodes,
     host_bvh.nodes.data(),
-    host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t),
+    host_bvh.nodes.size() * sizeof(cubql::ActiveBVHType::node_t),
     0,
     0,
     context_.gpuID,
@@ -415,6 +416,7 @@ void CuBQLRayTracer::create_global_surface_tree()
   global_surface_bvh_.gpu_id = context_.gpuID;
 
   cuBQL::BuildConfig build_params;
+  build_params.maxAllowedLeafSize = 1;
   std::vector<cuBQL::box3f> host_aabbs(num_primitives);
   omp_target_memcpy(
     host_aabbs.data(),
@@ -429,15 +431,15 @@ void CuBQLRayTracer::create_global_surface_tree()
   auto host_bvh = xdg::cubql::build_bvh(host_aabbs, build_params, context_.gpuID);
 
   // Upload the BVH to openmp device
-  global_surface_bvh_.bvh.nodes = static_cast<cuBQL::bvh3f::node_t*>(
-    omp_target_alloc(host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t), context_.gpuID));
+  global_surface_bvh_.bvh.nodes = static_cast<xdg::cubql::ActiveBVHType::node_t*>(
+    omp_target_alloc(host_bvh.nodes.size() * sizeof(xdg::cubql::ActiveBVHType::node_t), context_.gpuID));
   global_surface_bvh_.bvh.primIDs = static_cast<std::uint32_t*>(
     omp_target_alloc(host_bvh.prim_ids.size() * sizeof(std::uint32_t), context_.gpuID));
 
   omp_target_memcpy(
     global_surface_bvh_.bvh.nodes,
     host_bvh.nodes.data(),
-    host_bvh.nodes.size() * sizeof(cuBQL::bvh3f::node_t),
+    host_bvh.nodes.size() * sizeof(xdg::cubql::ActiveBVHType::node_t),
     0,
     0,
     context_.gpuID,
@@ -636,7 +638,8 @@ CuBQLRayTracer::ray_fire_batch(const XDGRayHitBuffer& ray_hits,
 }
 
 void
-CuBQLRayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) const
+CuBQLRayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits,
+                                           HitOrientation hit_orientation) const
 {
   if (ray_hits.count == 0) return;
 
@@ -653,7 +656,8 @@ CuBQLRayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer& ray_hits) cons
   intersect_surface_tree_batch_global(context_,
                                       global_surface_bvh_.get_device_data(),
                                       ray_hits.data,
-                                      ray_hits.count);
+                                      ray_hits.count,
+                                      hit_orientation);
 }
 
 std::pair<double, MeshID>

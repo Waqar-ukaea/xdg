@@ -294,7 +294,7 @@ int main(int argc, char** argv)
 
     auto trace_batch = [&](const XDGRayHitBuffer& buffer) {
       if (use_global_surface_tree) {
-        xdg->trace_against_global_surface_tree(buffer);
+        xdg->trace_against_global_surface_tree(buffer, HitOrientation::ANY);
       } else {
         xdg->ray_fire_batch(buffer, HitOrientation::ANY);
       }

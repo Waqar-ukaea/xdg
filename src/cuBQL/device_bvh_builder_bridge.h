@@ -4,12 +4,12 @@
 #include <cstdint>
 #include <vector>
 
-#include "cuBQL/bvh.h"
+#include "xdg/cuBQL/cuBQL_backend.h"
 
 namespace xdg::cubql {
 
 struct HostBVH {
-  std::vector<cuBQL::bvh3f::node_t> nodes;
+  std::vector<ActiveBVHType::node_t> nodes;
   std::vector<std::uint32_t> prim_ids;
 };
 

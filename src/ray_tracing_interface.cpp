@@ -39,7 +39,8 @@ void RayTracer::ray_fire_batch(const XDGRayHitBuffer&,
   fatal_error("Selected ray tracer does not support device batch ray fire");
 }
 
-void RayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer&) const
+void RayTracer::ray_fire_batch_global_tree(const XDGRayHitBuffer&,
+                                           HitOrientation) const
 {
   fatal_error("Selected ray tracer does not support device batch ray fire");
 }

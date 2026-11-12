@@ -111,7 +111,8 @@ void free_ray_hits(XDGRayHitBuffer& ray_hits) const;
 void ray_fire_batch(const XDGRayHitBuffer& ray_hits,
                     HitOrientation hit_orientation = HitOrientation::EXITING) const;
 
-void trace_against_global_surface_tree(const XDGRayHitBuffer& ray_hits) const;
+void trace_against_global_surface_tree(const XDGRayHitBuffer& ray_hits,
+                                       HitOrientation hit_orientation = HitOrientation::EXITING) const;
 
 
 std::pair<double, MeshID> closest(MeshID volume,
