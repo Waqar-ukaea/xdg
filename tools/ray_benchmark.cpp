@@ -88,6 +88,11 @@ int main(int argc, char** argv)
     .choices("human", "csv")
     .help("stdout format. Human readable (default) or csv");
 
+  args.add_argument("--global-surface-tree")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Trace the batch against the single global surface BVH");
+
   args.add_description(
     "Benchmarks ray-fire throughput for a selected mesh volume. A source "
     "position is provided and ray directions are randomly generated from it.");
@@ -172,9 +177,21 @@ int main(int argc, char** argv)
     origin = mesh_manager->volume_bounding_box(volume).center();
   }
 
-  xdg->prepare_volume_for_raytracing(volume);
-  xdg->ray_tracing_interface()->init();
+  const bool use_global_surface_tree = args.get<bool>("--global-surface-tree");
+  if (use_global_surface_tree && rt_lib != RTLibrary::CUBQL) {
+    fatal_error("--global-surface-tree is currently supported only by CUBQL");
+  }
+  const std::string surface_tree_mode =
+    use_global_surface_tree ? "global" : "per-volume";
 
+  if (use_global_surface_tree) { // Prepare all volunes + global surface tree for ray tracing
+    xdg->prepare_raytracer();
+  } 
+  else { // Prepare the selected volume for ray tracing
+    xdg->prepare_volume_for_raytracing(volume);
+    xdg->ray_tracing_interface()->init();
+  }
+  
   const bool origin_in_volume = xdg->point_in_volume(volume, origin);
   if (!origin_in_volume) {
     const std::string origin_label = source_radius > 0.0 ? "source center" : "ray origin";
@@ -275,16 +292,24 @@ int main(int argc, char** argv)
     xdg->upload_ray_hits(device_ray_hits, ray_hits.data(), ray_hits.size());
     upload_timer.stop();
 
+    auto trace_batch = [&](const XDGRayHitBuffer& buffer) {
+      if (use_global_surface_tree) {
+        xdg->trace_against_global_surface_tree(buffer);
+      } else {
+        xdg->ray_fire_batch(buffer, HitOrientation::ANY);
+      }
+    };
+
     // Warm up ray fire to catch any initial first time setup costs incurred by the GPU backend
     if (warmup_rays > 0) {
       XDGRayHitBuffer warmup_buffer = device_ray_hits;
       warmup_buffer.count = warmup_rays;
-      xdg->ray_fire_batch(warmup_buffer);
+      trace_batch(warmup_buffer);
     }
 
     trace_timer.start();
     for (std::uint32_t n = 0; n < trace_repetitions; ++n) {
-      xdg->ray_fire_batch(device_ray_hits);
+      trace_batch(device_ray_hits);
     }
     trace_timer.stop();
 
@@ -330,6 +355,7 @@ int main(int argc, char** argv)
     "model",
     "mesh_library",
     "rt_library",
+    "surface_tree_mode",
     "volume",
     "num_faces",
     "num_rays",
@@ -362,6 +388,7 @@ int main(int argc, char** argv)
     model_name,
     mesh_str,
     rt_str,
+    surface_tree_mode,
     fmt::format("{}", volume),
     fmt::format("{}", num_faces),
     fmt::format("{}", num_rays),
@@ -399,6 +426,7 @@ int main(int argc, char** argv)
     std::cout << "Model                 : " << model_name << "\n";
     std::cout << "Mesh library          : " << mesh_str << "\n";
     std::cout << "Ray tracing library   : " << rt_label << "\n";
+    std::cout << "Surface tree mode     : " << surface_tree_mode << "\n";
     std::cout << "Volume                : " << volume << "\n";
     std::cout << "Volume faces          : " << num_faces << "\n";
     std::cout << "Seed                  : " << seed << "\n";
