@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <map>
 #include <numeric>
 #include <random>
 #include <string>
@@ -336,5 +335,43 @@ TEMPLATE_TEST_CASE("Test Single-Tet Vertex Intersection Tracks", "[tracks]",
       REQUIRE(reverse_length == Catch::Approx(expected_length).epsilon(0.00001));
       REQUIRE(forward_length == Catch::Approx(reverse_length).epsilon(0.00001));
     }
+  }
+}
+
+TEST_CASE("Test Exterior Grazing Edge and Vertex Tracks", "[tracks]")
+{
+  auto mm = std::make_shared<MockedTriTetMesh>();
+  mm->init();
+  mm->create_implicit_complement();
+  auto xdg = std::make_shared<XDG>(mm);
+  xdg->prepare_raytracer();
+
+  const auto bbox = mm->bounding_box();
+  const double z_mid = 0.5 * (bbox.min_z + bbox.max_z);
+
+  SECTION("Exterior edge graze")
+  {
+    const Position start {bbox.min_x - 1.0, bbox.min_y + 1.0, z_mid};
+    const Position end   {bbox.min_x + 1.0, bbox.min_y - 1.0, z_mid};
+
+    const auto track_segments = xdg->segments(start, end);
+    const double total_length = std::accumulate(
+      track_segments.begin(), track_segments.end(), 0.0,
+      [](double sum, const auto& seg) { return sum + seg.second; });
+
+    REQUIRE_THAT(total_length, Catch::Matchers::WithinAbs(0.0, 1e-10));
+  }
+
+  SECTION("Exterior vertex graze")
+  {
+    const Position start {bbox.min_x - 1.0, bbox.min_y + 1.0, bbox.min_z + 1.0};
+    const Position end   {bbox.min_x + 1.0, bbox.min_y - 1.0, bbox.min_z - 1.0};
+
+    const auto track_segments = xdg->segments(start, end);
+    const double total_length = std::accumulate(
+      track_segments.begin(), track_segments.end(), 0.0,
+      [](double sum, const auto& seg) { return sum + seg.second; });
+
+    REQUIRE_THAT(total_length, Catch::Matchers::WithinAbs(0.0, 1e-10));
   }
 }
